@@ -1,6 +1,7 @@
 import SwiftUI
 import UserNotifications
 import Combine
+import os.log
 
 @available(macOS 14.0, *)
 struct AppNotifications {
@@ -66,15 +67,37 @@ struct CountdownReminderApp: App {
 
 @available(macOS 14.0, *)
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    private static let logger = Logger(subsystem: "com.foo.CountdownReminder", category: "AppDelegate")
+
     func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
         requestNotificationPermissions()
     }
 
     func requestNotificationPermissions() {
         UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                Self.logger.info("Notification permission not determined, requesting...")
+                self.requestAuthorization()
+            case .denied:
+                Self.logger.warning("Notification permission denied by user")
+            case .authorized, .provisional, .ephemeral:
+                Self.logger.info("Notification permission granted: \(settings.authorizationStatus.rawValue)")
+            @unknown default:
+                Self.logger.warning("Unknown notification authorization status")
+            }
+        }
+    }
+
+    private func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
-                print("Notification permission error: \(error)")
+                Self.logger.error("Notification permission request error: \(error.localizedDescription)")
+            } else if granted {
+                Self.logger.info("Notification permission granted by user")
+            } else {
+                Self.logger.warning("Notification permission denied by user")
             }
         }
     }

@@ -2,103 +2,138 @@ import Foundation
 import Combine
 import UserNotifications
 import SwiftUI
+import os.log
+
+// MARK: - Timer Managing Protocol
+
+/// 计时器管理协议
+///
+/// 定义计时器管理的基本操作，
+/// 遵循单一职责原则和依赖倒置原则
+@available(macOS 14.0, *)
+protocol TimerManaging: AnyObject {
+    var activeTimers: [CountdownTimer] { get }
+    var timers: [CountdownTimer] { get }
+    var isFullscreenAlertPresented: Bool { get }
+    var completedTimer: CountdownTimer? { get }
+
+    func addTimer(_ timer: CountdownTimer)
+    func updateTimer(_ timer: CountdownTimer)
+    func deleteTimer(_ timer: CountdownTimer)
+    func startTimer(_ timer: CountdownTimer)
+    func pauseTimer(_ timer: CountdownTimer)
+    func resumeTimer(_ timer: CountdownTimer)
+    func stopTimer(_ timer: CountdownTimer)
+    func resetTimer(_ timer: CountdownTimer)
+    func skipTimer(_ timer: CountdownTimer)
+    func formatTime(_ timeInterval: TimeInterval) -> String
+}
+
+// MARK: - Timer State
+
+/// 计时器状态枚举
+@available(macOS 14.0, *)
+enum TimerState {
+    case started, paused, resumed, stopped
+
+    func apply(to timer: CountdownTimer) {
+        switch self {
+        case .started: timer.start()
+        case .paused: timer.pause()
+        case .resumed: timer.resume()
+        case .stopped: timer.stop()
+        }
+    }
+}
+
+// MARK: - Timer Manager
 
 /// 时间同步管理器
 /// 负责管理所有计时器的状态同步，确保菜单栏和主应用时间显示一致
 @available(macOS 14.0, *)
 @MainActor
-class TimerManager: ObservableObject {
+class TimerManager: ObservableObject, TimerManaging {
     static let shared = TimerManager()
-    
+
+    // MARK: - Constants
+    private enum Constants {
+        static let refreshInterval: TimeInterval = 0.1
+        static let timersKey = "savedTimers_v4"
+        static let maxTitleLength = 100
+        static let maxDescriptionLength = 500
+        static let saveDebounceInterval: TimeInterval = 2.0
+    }
+
+    // MARK: - Logging
+    private static let logger = Logger(subsystem: "com.foo.CountdownReminder", category: "TimerManager")
+
     // MARK: - Published Properties
-    /// 所有计时器列表
-    @Published var timers: [CountdownTimer] = []
-    /// 活跃计时器列表（已改为 @Published 确保视图更新）
-    @Published var activeTimers: [CountdownTimer] = []
-    /// 全屏提醒显示状态
+    @Published private(set) var timers: [CountdownTimer] = []
+    @Published private(set) var activeTimers: [CountdownTimer] = []
     @Published var isFullscreenAlertPresented = false
-    /// 已完成的计时器
     @Published var completedTimer: CountdownTimer?
-    /// 最后更新时间戳（用于强制刷新）
-    @Published var lastUpdateTimestamp: Date = Date()
-    
+    @Published private(set) var lastUpdateTimestamp: Date = Date()
+
     // MARK: - Private Properties
     private var timerCancellable: AnyCancellable?
     private var cancellables = Set<AnyCancellable>()
     private let userDefaults = UserDefaults.standard
-    private let timersKey = "savedTimers_v2"
-    /// 同步队列，用于处理并发更新
-    private let syncQueue = DispatchQueue(label: "com.foo.timerSync", qos: .userInteractive)
-    
+    private var needsRefresh = false
+    private var isDirty = false
+    private var saveTask: Task<Void, Never>?
+
     // MARK: - Initialization
     init() {
+        Self.logger.info("TimerManager initialized")
         loadTimers()
         setupNotifications()
         startGlobalTimer()
         setupActiveTimersObserver()
     }
-    
+
     deinit {
         timerCancellable?.cancel()
+        saveTask?.cancel()
     }
-    
+
     // MARK: - Active Timers Observer
-    /// 设置活跃计时器观察者
-    /// 监听 timers 数组变化和定时刷新，确保 activeTimers 始终同步
     private func setupActiveTimersObserver() {
-        // 监听 timers 数组变化
         $timers
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateActiveTimers()
             }
             .store(in: &cancellables)
-        
-        // 高频刷新（每100ms）确保时间显示流畅
-        Timer.publish(every: 0.1, on: .main, in: .common)
+
+        Timer.publish(every: Constants.refreshInterval, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
-                self?.refreshTimeDisplay()
+                self?.refreshTimeDisplayIfNeeded()
             }
             .store(in: &cancellables)
     }
-    
-    /// 刷新时间显示（不重建数组，只触发更新）
-    private func refreshTimeDisplay() {
-        // 更新最后更新时间戳，强制 SwiftUI 刷新
+
+    private func refreshTimeDisplayIfNeeded() {
+        guard needsRefresh else { return }
         lastUpdateTimestamp = Date()
-        
-        // 检查是否有计时器需要更新 activeTimers 状态
-        let currentActiveIds = Set(activeTimers.map { $0.id })
-        let shouldBeActive = timers.filter { $0.isActive || $0.isPaused }
-        let shouldBeActiveIds = Set(shouldBeActive.map { $0.id })
-        
-        // 如果活跃计时器集合发生变化，更新 activeTimers
-        if currentActiveIds != shouldBeActiveIds {
-            activeTimers = shouldBeActive
-        }
+        needsRefresh = false
     }
-    
-    /// 更新活跃计时器列表
+
     private func updateActiveTimers() {
         let newActiveTimers = timers.filter { $0.isActive || $0.isPaused }
-        
-        // 检查内容是否真正变化（ID集合 + 状态）
         let currentIds = Set(activeTimers.map { $0.id })
         let newIds = Set(newActiveTimers.map { $0.id })
-        
-        let currentStates = Dictionary(uniqueKeysWithValues: activeTimers.map { ($0.id, $0.isActive) })
-        let newStates = Dictionary(uniqueKeysWithValues: newActiveTimers.map { ($0.id, $0.isActive) })
-        
-        if currentIds != newIds || currentStates != newStates {
-            activeTimers = newActiveTimers
-            objectWillChange.send() // 强制触发更新通知
-        }
+
+        guard currentIds != newIds else { return }
+
+        activeTimers = newActiveTimers
+        objectWillChange.send()
+        needsRefresh = true
+        markDirty()
+        Self.logger.debug("Active timers updated: \(self.activeTimers.count)")
     }
-    
+
     // MARK: - Global Timer
-    /// 启动全局计时器
-    /// 使用单个定时器更新所有活跃计时器，确保同步
     private func startGlobalTimer() {
         timerCancellable = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
@@ -106,124 +141,134 @@ class TimerManager: ObservableObject {
                 self?.updateAllTimers()
             }
     }
-    
-    /// 更新所有计时器
-    /// 每秒调用一次，更新活跃计时器的剩余时间
+
     private func updateAllTimers() {
         var hasChanges = false
-        
+
         for timer in timers where timer.isActive && !timer.isPaused {
-            let wasCompleted = timer.tick()
-            if wasCompleted {
+            timer.tick()
+            if timer.remainingTime <= 0 {
                 completeTimer(timer)
-                hasChanges = true
-            } else {
-                hasChanges = true
             }
+            hasChanges = true
+            Self.logger.debug("Timer ticked: \(timer.title), remaining: \(timer.remainingTime)")
         }
-        
-        // 只要有变化就保存和更新
+
         if hasChanges {
-            saveTimers()
             updateActiveTimers()
-            lastUpdateTimestamp = Date()
+            markDirty()
         }
     }
-    
-    // MARK: - Timer Management
-    
-    func addTimer(_ timer: CountdownTimer) {
-        timers.append(timer)
-        updateActiveTimers()
-        saveTimers()
+
+    // MARK: - Dirty Flag & Batch Save
+    private func markDirty() {
+        isDirty = true
+        scheduleDelayedSave()
     }
-    
+
+    private func scheduleDelayedSave() {
+        saveTask?.cancel()
+        saveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(Constants.saveDebounceInterval * 1_000_000_000))
+            guard notCancelled else { return }
+            self.saveIfDirty()
+        }
+    }
+
+    private var notCancelled: Bool {
+        !Task.isCancelled
+    }
+
+    private func saveIfDirty() {
+        guard isDirty else { return }
+        saveTimers()
+        isDirty = false
+        Self.logger.debug("Timers saved (batch)")
+    }
+
+    // MARK: - Timer Management
+    func addTimer(_ timer: CountdownTimer) {
+        let validatedTimer = validateAndCloneTimer(timer)
+        timers.append(validatedTimer)
+        updateActiveTimers()
+        markDirty()
+        Self.logger.info("Timer added: \(validatedTimer.title)")
+    }
+
     func updateTimer(_ timer: CountdownTimer) {
         updateActiveTimers()
-        saveTimers()
+        markDirty()
     }
-    
+
     func deleteTimer(_ timer: CountdownTimer) {
         timer.stop()
         timers.removeAll { $0.id == timer.id }
         updateActiveTimers()
-        saveTimers()
+        markDirty()
+        Self.logger.info("Timer deleted: \(timer.title)")
     }
-    
-    /// 开始计时器
-    /// - Parameter timer: 要开始的计时器
+
     func startTimer(_ timer: CountdownTimer) {
-        timer.start()
-        updateActiveTimers()
-        saveTimers()
-        lastUpdateTimestamp = Date()
+        performStateChange(timer, state: .started)
     }
-    
-    /// 暂停计时器
-    /// - Parameter timer: 要暂停的计时器
+
     func pauseTimer(_ timer: CountdownTimer) {
-        timer.pause()
-        updateActiveTimers()
-        saveTimers()
-        lastUpdateTimestamp = Date()
+        performStateChange(timer, state: .paused)
     }
-    
-    /// 恢复计时器
-    /// - Parameter timer: 要恢复的计时器
+
     func resumeTimer(_ timer: CountdownTimer) {
-        timer.resume()
-        updateActiveTimers()
-        saveTimers()
-        lastUpdateTimestamp = Date()
+        performStateChange(timer, state: .resumed)
     }
-    
-    /// 停止计时器
-    /// - Parameter timer: 要停止的计时器
+
     func stopTimer(_ timer: CountdownTimer) {
-        timer.stop()
-        updateActiveTimers()
-        saveTimers()
-        lastUpdateTimestamp = Date()
+        performStateChange(timer, state: .stopped)
     }
-    
+
     func resetTimer(_ timer: CountdownTimer) {
         timer.reset()
         updateActiveTimers()
-        saveTimers()
+        markDirty()
     }
-    
+
     func skipTimer(_ timer: CountdownTimer) {
         completeTimer(timer)
     }
-    
+
+    // MARK: - State Change
+    private func performStateChange(_ timer: CountdownTimer, state: TimerState) {
+        state.apply(to: timer)
+        updateActiveTimers()
+        markDirty()
+        Self.logger.debug("Timer state changed: \(timer.title) -> \(String(describing: state))")
+    }
+
     // MARK: - Completion Handling
-    
     private func completeTimer(_ timer: CountdownTimer) {
+        guard timer.remainingTime <= 0 else { return }
+
         timer.stop()
-        timer.remainingTime = 0
-        
-        self.completedTimer = timer
-        
+        completedTimer = timer
+
         if timer.showFullscreenAlert {
             isFullscreenAlertPresented = true
+            Self.logger.info("Fullscreen alert shown for: \(timer.title)")
         }
-        
+
         sendNotification(for: timer)
         handleRepeat(for: timer)
         updateActiveTimers()
-        saveTimers()
-        lastUpdateTimestamp = Date()
+        markDirty()
     }
-    
+
     // MARK: - Repeat Handling
-    
     private func handleRepeat(for timer: CountdownTimer) {
         guard timer.repeatFrequency != .once else { return }
-        
+
         if let endDate = timer.endDate, Date() > endDate {
+            Self.logger.info("Timer repeat ended (past end date): \(timer.title)")
             return
         }
-        
+
         let nextTimer = CountdownTimer(
             title: timer.title,
             description: timer.timerDescription,
@@ -233,17 +278,16 @@ class TimerManager: ObservableObject {
             soundEnabled: timer.soundEnabled,
             showFullscreenAlert: timer.showFullscreenAlert
         )
-        
+
         addTimer(nextTimer)
     }
-    
+
     // MARK: - Snooze
-    
     func snoozeTimer(minutes: Int) {
         guard let completedTimer = completedTimer else { return }
-        
+
         isFullscreenAlertPresented = false
-        
+
         let snoozeTimer = CountdownTimer(
             title: "\(completedTimer.title) (延迟)",
             description: completedTimer.timerDescription,
@@ -251,166 +295,193 @@ class TimerManager: ObservableObject {
             soundEnabled: completedTimer.soundEnabled,
             showFullscreenAlert: completedTimer.showFullscreenAlert
         )
-        
+
         addTimer(snoozeTimer)
         startTimer(snoozeTimer)
+        Self.logger.info("Timer snoozed for \(minutes) minutes: \(completedTimer.title)")
     }
-    
+
     func dismissAlert() {
         isFullscreenAlertPresented = false
         completedTimer = nil
     }
-    
+
     // MARK: - Notifications
-    
     private func setupNotifications() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            print("Notification permission: \(granted)")
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
+            if let error = error {
+                Self.logger.error("Notification permission error: \(error.localizedDescription)")
+            } else {
+                Self.logger.info("Notification permission granted: \(granted)")
+            }
         }
     }
-    
+
     private func sendNotification(for timer: CountdownTimer) {
         let content = UNMutableNotificationContent()
         content.title = timer.title
         content.body = timer.timerDescription.isEmpty ? "倒计时结束！" : timer.timerDescription
         content.sound = timer.soundEnabled ? .default : nil
         content.badge = 1
-        
+
         let request = UNNotificationRequest(
             identifier: timer.id.uuidString,
             content: content,
             trigger: nil
         )
-        
-        UNUserNotificationCenter.current().add(request) { error in
+
+        UNUserNotificationCenter.current().add(request) { [weak self] error in
             if let error = error {
-                print("Notification error: \(error)")
+                Self.logger.error("Failed to send notification: \(error.localizedDescription)")
             }
         }
     }
-    
+
     // MARK: - Data Persistence
-    
     private func saveTimers() {
         do {
             let encoded = try JSONEncoder().encode(timers)
-            userDefaults.set(encoded, forKey: timersKey)
+            userDefaults.set(encoded, forKey: Constants.timersKey)
         } catch {
-            print("Failed to save timers: \(error)")
+            Self.logger.error("Failed to save timers: \(error.localizedDescription)")
         }
     }
-    
+
     private func loadTimers() {
-        guard let data = userDefaults.data(forKey: timersKey) else { return }
-        
+        guard let data = userDefaults.data(forKey: Constants.timersKey) else {
+            Self.logger.info("No saved timers found")
+            return
+        }
+
         do {
             let decoded = try JSONDecoder().decode([CountdownTimer].self, from: data)
             timers = decoded
             updateActiveTimers()
+            Self.logger.info("Loaded \(decoded.count) timers")
         } catch {
-            print("Failed to load timers: \(error)")
+            Self.logger.error("Failed to load timers: \(error.localizedDescription)")
             loadLegacyTimers()
         }
     }
-    
+
+    // MARK: - Legacy Data Migration
     private func loadLegacyTimers() {
-        let legacyKey = "savedTimers"
-        guard let data = userDefaults.data(forKey: legacyKey) else { return }
-        
-        do {
-            struct LegacyTimer: Codable {
-                let id: UUID
-                let title: String
-                let description: String
-                let duration: TimeInterval
-                let remainingTime: TimeInterval
-                let isActive: Bool
-                let isPaused: Bool
-                let repeatFrequency: RepeatFrequency
-                let endDate: Date?
-                let createdAt: Date
-                let lastStartedAt: Date?
-                let soundEnabled: Bool
-                let showFullscreenAlert: Bool
+        let legacyKeys = ["savedTimers_v3", "savedTimers_v2", "savedTimers"]
+
+        for key in legacyKeys {
+            guard let data = userDefaults.data(forKey: key) else { continue }
+
+            do {
+                struct LegacyTimer: Codable {
+                    let id: UUID
+                    let title: String
+                    let description: String
+                    let duration: TimeInterval
+                    let remainingTime: TimeInterval
+                    let isActive: Bool
+                    let isPaused: Bool
+                    let repeatFrequency: RepeatFrequency
+                    let endDate: Date?
+                    let createdAt: Date
+                    let lastStartedAt: Date?
+                    let soundEnabled: Bool
+                    let showFullscreenAlert: Bool
+                }
+
+                let legacyTimers = try JSONDecoder().decode([LegacyTimer].self, from: data)
+                self.timers = legacyTimers.map { legacy in
+                    let timer = CountdownTimer(
+                        id: legacy.id,
+                        title: legacy.title,
+                        description: legacy.description,
+                        duration: legacy.duration,
+                        repeatFrequency: legacy.repeatFrequency,
+                        endDate: legacy.endDate,
+                        soundEnabled: legacy.soundEnabled,
+                        showFullscreenAlert: legacy.showFullscreenAlert
+                    )
+                    timer.remainingTime = legacy.remainingTime
+                    timer.isActive = false
+                    timer.isPaused = false
+                    timer.lastStartedAt = legacy.lastStartedAt
+                    return timer
+                }
+                markDirty()
+                Self.logger.info("Legacy timers migrated from \(key): \(self.timers.count) timers")
+                return
+            } catch {
+                Self.logger.warning("Failed to migrate legacy timers from \(key): \(error.localizedDescription)")
             }
-            
-            let legacyTimers = try JSONDecoder().decode([LegacyTimer].self, from: data)
-            timers = legacyTimers.map { legacy in
-                let timer = CountdownTimer(
-                    id: legacy.id,
-                    title: legacy.title,
-                    description: legacy.description,
-                    duration: legacy.duration,
-                    repeatFrequency: legacy.repeatFrequency,
-                    endDate: legacy.endDate,
-                    soundEnabled: legacy.soundEnabled,
-                    showFullscreenAlert: legacy.showFullscreenAlert
-                )
-                timer.remainingTime = legacy.remainingTime
-                timer.isActive = false
-                timer.isPaused = false
-                timer.lastStartedAt = legacy.lastStartedAt
-                return timer
-            }
-            saveTimers()
-            updateActiveTimers()
-        } catch {
-            print("Failed to load legacy timers: \(error)")
         }
     }
-    
+
     // MARK: - Background Handling
-    
-    func handleAppDidEnterBackground() {
-        saveTimers()
+    nonisolated func handleAppDidEnterBackground() {
+        Task { @MainActor in
+            saveIfDirty()
+        }
     }
-    
-    func handleAppWillEnterForeground() {
-        // 计算后台经过的时间并更新计时器
-        for timer in timers where timer.isActive && !timer.isPaused {
-            guard let lastStartedAt = timer.lastStartedAt else { continue }
-            
-            let timeSinceLastUpdate = Date().timeIntervalSince(lastStartedAt)
-            let secondsToSubtract = Int(timeSinceLastUpdate)
-            
-            if secondsToSubtract > 0 {
-                timer.remainingTime = max(0, timer.remainingTime - TimeInterval(secondsToSubtract))
-                timer.lastStartedAt = Date()
-                
-                if timer.remainingTime <= 0 {
-                    completeTimer(timer)
+
+    nonisolated func handleAppWillEnterForeground() {
+        Task { @MainActor in
+            for timer in timers where timer.isActive && !timer.isPaused {
+                guard let lastStartedAt = timer.lastStartedAt else { continue }
+
+                let timeSinceLastUpdate = Date().timeIntervalSince(lastStartedAt)
+                let secondsToSubtract = Int(timeSinceLastUpdate)
+
+                if secondsToSubtract > 0 {
+                    timer.remainingTime = max(0, timer.remainingTime - TimeInterval(secondsToSubtract))
+                    timer.lastStartedAt = Date()
+
+                    if timer.remainingTime <= 0 {
+                        completeTimer(timer)
+                    }
                 }
             }
+            updateActiveTimers()
+            markDirty()
         }
-        updateActiveTimers()
-        saveTimers()
-        lastUpdateTimestamp = Date()
     }
-    
+
+    // MARK: - Input Validation
+    private func validateAndCloneTimer(_ timer: CountdownTimer) -> CountdownTimer {
+        let validatedTitle = String(timer.title.prefix(Constants.maxTitleLength)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let validatedDescription = String(timer.timerDescription.prefix(Constants.maxDescriptionLength)).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if validatedTitle != timer.title || validatedDescription != timer.timerDescription {
+            Self.logger.warning("Timer input was sanitized: title=\(validatedTitle), description=\(validatedDescription)")
+        }
+
+        let cloned = CountdownTimer(
+            id: timer.id,
+            title: validatedTitle.isEmpty ? "未命名计时器" : validatedTitle,
+            description: validatedDescription,
+            duration: timer.duration,
+            repeatFrequency: timer.repeatFrequency,
+            endDate: timer.endDate,
+            soundEnabled: timer.soundEnabled,
+            showFullscreenAlert: timer.showFullscreenAlert
+        )
+        cloned.remainingTime = timer.remainingTime
+        cloned.isActive = timer.isActive
+        cloned.isPaused = timer.isPaused
+        cloned.lastStartedAt = timer.lastStartedAt
+
+        return cloned
+    }
+
     // MARK: - Formatting
-    
     func formatTime(_ timeInterval: TimeInterval) -> String {
         let totalSeconds = Int(max(0, timeInterval))
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60
-        
+
         if hours > 0 {
             return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
         } else {
             return String(format: "%02d:%02d", minutes, seconds)
         }
-    }
-    
-    func getRemainingTime(for timer: CountdownTimer) -> TimeInterval {
-        return timer.remainingTime
-    }
-    
-    func isTimerActive(_ timer: CountdownTimer) -> Bool {
-        return timer.isActive
-    }
-    
-    func isTimerPaused(_ timer: CountdownTimer) -> Bool {
-        return timer.isPaused
     }
 }

@@ -2,45 +2,40 @@ import Foundation
 import AppKit
 import SwiftUI
 import Combine
+import os.log
 
-/// 菜单栏显示模式
 enum MenuBarDisplayMode: String, CaseIterable {
     case staticIcon = "静态图标"
     case dynamicTimer = "动态倒计时"
     case compact = "紧凑模式"
 }
 
-/// 菜单栏管理器 - 负责管理菜单栏的显示和交互
-/// 确保菜单栏时间与主应用完全同步
 @available(macOS 14.0, *)
 @MainActor
 final class MenuBarManager: NSObject, ObservableObject {
     static let shared = MenuBarManager()
 
-    // MARK: - Published Properties
+    private static let logger = Logger(subsystem: "com.foo.CountdownReminder", category: "MenuBarManager")
+
     @Published var displayMode: MenuBarDisplayMode = .dynamicTimer
     @Published var isMenuOpen = false
     @Published var currentTimeString: String = ""
     @Published var shouldShowMainWindow = false
 
-    // MARK: - Private Properties
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var timerManager: TimerManager?
     private var cancellables = Set<AnyCancellable>()
     private var isConfigured = false
     private var mainWindow: NSWindow?
-    private var mainWindowController: NSWindowController?
 
-    // MARK: - Initialization
     private override init() {
         super.init()
     }
 
-    // MARK: - Setup
     func configure(with timerManager: TimerManager) {
         guard !isConfigured else {
-            print("菜单栏已经配置，跳过重复初始化")
+            Self.logger.warning("MenuBarManager already configured, skipping duplicate initialization")
             return
         }
 
@@ -48,17 +43,16 @@ final class MenuBarManager: NSObject, ObservableObject {
         self.timerManager = timerManager
         setupMenuBar()
         setupObservers()
+        Self.logger.info("MenuBarManager configured successfully")
     }
 
     private func setupMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         guard let button = statusItem?.button else {
-            print("无法创建状态栏按钮")
+            Self.logger.error("Failed to create status bar button")
             return
         }
-
-        print("菜单栏已设置完成")
 
         let image = NSImage(systemSymbolName: "timer", accessibilityDescription: "倒计时提醒")
         image?.isTemplate = true
@@ -109,7 +103,6 @@ final class MenuBarManager: NSObject, ObservableObject {
             .store(in: &cancellables)
     }
 
-    // MARK: - Update
     private func updateMenuBar() {
         guard let button = statusItem?.button,
               let timerManager = timerManager else { return }
@@ -135,7 +128,6 @@ final class MenuBarManager: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Actions
     @objc private func handleClick() {
         guard let popover = popover, let button = statusItem?.button else { return }
 
@@ -171,41 +163,31 @@ final class MenuBarManager: NSObject, ObservableObject {
     }
 
     private func bringWindowToFront() {
-        // 策略1：如果有缓存的主窗口且有效，使用它
         if let cachedWindow = mainWindow, cachedWindow.isVisible {
-            print("使用缓存的主窗口")
             cachedWindow.makeKeyAndOrderFront(nil)
             cachedWindow.orderFrontRegardless()
             return
         }
 
-        // 策略2：查找符合主窗口特征的窗口
-        // 主窗口特征：不是popover，尺寸较大，有标题栏
         for window in NSApp.windows {
-            // 跳过 popover 窗口（通常是小型浮动窗口）
             if isPopoverWindow(window) {
                 continue
             }
 
-            // 跳过尺寸太小的窗口（不是主窗口）
             if window.frame.width < 400 || window.frame.height < 300 {
                 continue
             }
 
-            // 跳过没有标题栏的窗口
             if window.styleMask.contains(.borderless) {
                 continue
             }
 
-            // 这是一个候选主窗口
-            print("找到候选主窗口: \(window.title), frame: \(window.frame), class: \(window.className)")
             mainWindow = window
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
             return
         }
 
-        // 策略3：如果实在找不到，尝试使用 NSApp.mainWindow
         if let mainWindow = NSApp.mainWindow {
             self.mainWindow = mainWindow
             mainWindow.makeKeyAndOrderFront(nil)
@@ -213,14 +195,11 @@ final class MenuBarManager: NSObject, ObservableObject {
             return
         }
 
-        // 策略4：尝试显示新窗口
-        print("警告：无法找到主窗口，尝试创建新窗口")
+        Self.logger.warning("Could not find main window, creating new one")
         showNewMainWindow()
     }
 
     private func isPopoverWindow(_ window: NSWindow) -> Bool {
-        // Popover 窗口的特征
-        // Popover 通常是小尺寸浮动窗口
         if window.frame.width <= 320 && window.frame.height <= 420 {
             if window.level == .floating {
                 return true
@@ -230,7 +209,6 @@ final class MenuBarManager: NSObject, ObservableObject {
     }
 
     private func showNewMainWindow() {
-        // 创建新的主窗口
         let contentView = ContentView()
             .environmentObject(timerManager!)
             .environmentObject(HotKeyManager.shared)
@@ -258,6 +236,5 @@ final class MenuBarManager: NSObject, ObservableObject {
 
     func registerMainWindow(_ window: NSWindow) {
         mainWindow = window
-        print("主窗口已注册: \(window.title), frame: \(window.frame)")
     }
 }

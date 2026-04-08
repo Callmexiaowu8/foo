@@ -2,10 +2,13 @@ import Foundation
 import AppKit
 import Carbon
 import Combine
+import os.log
 
 @available(macOS 14.0, *)
 class HotKeyManager: ObservableObject {
     static let shared = HotKeyManager()
+    
+    private static let logger = Logger(subsystem: "com.foo.CountdownReminder", category: "HotKeyManager")
     
     private var hotKeyRefs: [UInt32: EventHotKeyRef] = [:]
     private var eventHandler: EventHandlerRef?
@@ -19,8 +22,6 @@ class HotKeyManager: ObservableObject {
     deinit {
         unregisterAllHotKeys()
     }
-    
-    // MARK: - Event Handler
     
     private func registerEventHandler() {
         var eventType = EventTypeSpec()
@@ -53,8 +54,6 @@ class HotKeyManager: ObservableObject {
         InstallEventHandler(GetEventDispatcherTarget(), callback, 1, &eventType, userData, &eventHandler)
     }
     
-    // MARK: - Hot Key Registration
-    
     func registerHotKey(
         keyCode: UInt32,
         modifiers: UInt32,
@@ -82,6 +81,7 @@ class HotKeyManager: ObservableObject {
             return true
         }
         
+        Self.logger.error("Failed to register hotkey: \(identifier)")
         return false
     }
     
@@ -104,8 +104,6 @@ class HotKeyManager: ObservableObject {
         }
     }
     
-    // MARK: - Hot Key Handling
-    
     private var hotKeyActions: [UInt32: () -> Void] = [:]
     
     func registerAction(for identifier: UInt32, action: @escaping () -> Void) {
@@ -119,58 +117,50 @@ class HotKeyManager: ObservableObject {
         }
     }
     
-    // MARK: - Convenience Methods
-    
     func registerQuickAddTimerHotKey(action: @escaping () -> Void) {
-        // Cmd + Option + T
         let keyCode = UInt32(kVK_ANSI_T)
         let modifiers = UInt32(cmdKey | optionKey)
         let identifier: UInt32 = 1
         
         if registerHotKey(keyCode: keyCode, modifiers: modifiers, identifier: identifier, action: action) {
             registerAction(for: identifier, action: action)
-            print("已注册快速添加倒计时快捷键: Cmd+Option+T")
+            Self.logger.info("Quick add timer hotkey registered: Cmd+Option+T")
         }
     }
     
     func registerPauseResumeHotKey(action: @escaping () -> Void) {
-        // Cmd + Option + P
         let keyCode = UInt32(kVK_ANSI_P)
         let modifiers = UInt32(cmdKey | optionKey)
         let identifier: UInt32 = 2
         
         if registerHotKey(keyCode: keyCode, modifiers: modifiers, identifier: identifier, action: action) {
             registerAction(for: identifier, action: action)
-            print("已注册暂停/继续快捷键: Cmd+Option+P")
+            Self.logger.info("Pause/Resume hotkey registered: Cmd+Option+P")
         }
     }
     
     func registerStopHotKey(action: @escaping () -> Void) {
-        // Cmd + Option + S
         let keyCode = UInt32(kVK_ANSI_S)
         let modifiers = UInt32(cmdKey | optionKey)
         let identifier: UInt32 = 3
         
         if registerHotKey(keyCode: keyCode, modifiers: modifiers, identifier: identifier, action: action) {
             registerAction(for: identifier, action: action)
-            print("已注册停止快捷键: Cmd+Option+S")
+            Self.logger.info("Stop hotkey registered: Cmd+Option+S")
         }
     }
     
     func registerShowWindowHotKey(action: @escaping () -> Void) {
-        // Cmd + Option + M
         let keyCode = UInt32(kVK_ANSI_M)
         let modifiers = UInt32(cmdKey | optionKey)
         let identifier: UInt32 = 4
         
         if registerHotKey(keyCode: keyCode, modifiers: modifiers, identifier: identifier, action: action) {
             registerAction(for: identifier, action: action)
-            print("已注册显示窗口快捷键: Cmd+Option+M")
+            Self.logger.info("Show window hotkey registered: Cmd+Option+M")
         }
     }
 }
-
-// MARK: - Helper Extensions
 
 private func fourCharCode(_ string: String) -> FourCharCode {
     guard string.count == 4 else { return 0 }
@@ -180,8 +170,6 @@ private func fourCharCode(_ string: String) -> FourCharCode {
     }
     return result
 }
-
-// MARK: - Key Codes
 
 private let kVK_ANSI_T: Int = 0x11
 private let kVK_ANSI_P: Int = 0x23

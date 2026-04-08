@@ -13,8 +13,6 @@ enum RepeatFrequency: String, Codable, CaseIterable {
     }
 }
 
-// MARK: - Observable Timer Class
-// 使用类而不是结构体，这样状态变化可以自动通知 SwiftUI
 @available(macOS 14.0, *)
 @MainActor
 class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
@@ -32,8 +30,6 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
     @Published var lastStartedAt: Date?
     @Published var soundEnabled: Bool
     @Published var showFullscreenAlert: Bool
-
-    // MARK: - Initialization
 
     init(
         id: UUID = UUID(),
@@ -59,9 +55,6 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         self.soundEnabled = soundEnabled
         self.showFullscreenAlert = showFullscreenAlert
     }
-
-    // MARK: - Codable Implementation
-    // 手动实现 Codable 因为 @Published 属性需要特殊处理
 
     enum CodingKeys: String, CodingKey {
         case id, title, timerDescription, duration, remainingTime
@@ -103,13 +96,9 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         try container.encode(showFullscreenAlert, forKey: .showFullscreenAlert)
     }
 
-    // MARK: - Equatable
-
     static func == (lhs: CountdownTimer, rhs: CountdownTimer) -> Bool {
         return lhs.id == rhs.id
     }
-
-    // MARK: - Computed Properties
 
     var totalMinutes: Int {
         return Int(duration / 60)
@@ -129,8 +118,6 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         guard duration > 0 else { return 0 }
         return 1.0 - (remainingTime / duration)
     }
-
-    // MARK: - Timer Control Methods
 
     func start() {
         isActive = true
@@ -168,33 +155,5 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         guard isActive && !isPaused else { return false }
         remainingTime -= 1
         return remainingTime <= 0
-    }
-}
-
-// MARK: - Sample Data
-
-@available(macOS 14.0, *)
-extension CountdownTimer {
-    static var sampleTimers: [CountdownTimer] {
-        [
-            CountdownTimer(
-                title: "喝水",
-                description: "该喝水了，保持身体水分充足",
-                duration: 3600,
-                repeatFrequency: .daily
-            ),
-            CountdownTimer(
-                title: "休息",
-                description: "站起来活动一下，保护眼睛和颈椎",
-                duration: 2700,
-                repeatFrequency: .weekdays
-            ),
-            CountdownTimer(
-                title: "专注工作",
-                description: "专注时间结束，休息一下",
-                duration: 1500,
-                repeatFrequency: .once
-            )
-        ]
     }
 }

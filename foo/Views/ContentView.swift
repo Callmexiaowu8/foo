@@ -7,6 +7,8 @@ struct ContentView: View {
     @State private var selectedTimer: CountdownTimer?
     @State private var showingEditTimer = false
     @State private var hoveredTimerId: UUID?
+    @State private var showingDeleteConfirmation = false
+    @State private var timerToDelete: CountdownTimer?
 
     var body: some View {
         ZStack {
@@ -68,7 +70,10 @@ struct ContentView: View {
                                 }
                             }
                             .contextMenu {
-                                TimerContextMenu(timer: timer)
+                                TimerContextMenu(timer: timer) {
+                                    timerToDelete = timer
+                                    showingDeleteConfirmation = true
+                                }
                             }
                             .transition(.scale.combined(with: .opacity))
                         }
@@ -96,6 +101,21 @@ struct ContentView: View {
                 FullscreenAlertView()
                     .environmentObject(timerManager)
                     .transition(.opacity)
+            }
+        }
+        .alert("删除计时器", isPresented: $showingDeleteConfirmation) {
+            Button("取消", role: .cancel) {
+                timerToDelete = nil
+            }
+            Button("删除", role: .destructive) {
+                if let timer = timerToDelete {
+                    timerManager.deleteTimer(timer)
+                }
+                timerToDelete = nil
+            }
+        } message: {
+            if let timer = timerToDelete {
+                Text("确定要删除「\(timer.title)」吗？此操作无法撤销。")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: AppNotifications.showAddTimerSheet)) { _ in
@@ -405,7 +425,7 @@ struct TimerRowView: View {
             ZStack {
                 Circle()
                     .fill(
-                        timerManager.isTimerActive(timer) || timerManager.isTimerPaused(timer) ?
+                        timer.isActive || timer.isPaused ?
                         AppColors.primary.opacity(0.15) :
                         AppColors.divider.opacity(0.5)
                     )
@@ -414,7 +434,7 @@ struct TimerRowView: View {
                 Image(systemName: iconName)
                     .font(.system(size: 20))
                     .foregroundColor(
-                        timerManager.isTimerActive(timer) || timerManager.isTimerPaused(timer) ?
+                        timer.isActive || timer.isPaused ?
                         AppColors.primary :
                         AppColors.textSecondary
                     )
@@ -449,7 +469,7 @@ struct TimerRowView: View {
 
             // 右侧状态
             HStack(spacing: AppSpacing.sm) {
-                if timerManager.isTimerActive(timer) || timerManager.isTimerPaused(timer) {
+                if timer.isActive || timer.isPaused {
                     Text(timerManager.formatTime(timer.remainingTime))
                         .font(AppFonts.callout.monospacedDigit())
                         .foregroundColor(AppColors.primary)
@@ -467,13 +487,13 @@ struct TimerRowView: View {
                         toggleTimer()
                     }
                 }) {
-                    Image(systemName: timerManager.isTimerActive(timer) ? "stop.fill" : "play.fill")
+                    Image(systemName: timer.isActive ? "stop.fill" : "play.fill")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(timerManager.isTimerActive(timer) ? AppColors.error : AppColors.success)
+                        .foregroundColor(timer.isActive ? AppColors.error : AppColors.success)
                         .frame(width: 36, height: 36)
                         .background(
                             Circle()
-                                .fill(timerManager.isTimerActive(timer) ? AppColors.error.opacity(0.1) : AppColors.success.opacity(0.1))
+                                .fill(timer.isActive ? AppColors.error.opacity(0.1) : AppColors.success.opacity(0.1))
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -494,7 +514,7 @@ struct TimerRowView: View {
         .overlay(
             RoundedRectangle(cornerRadius: AppCornerRadius.lg)
                 .stroke(
-                    timerManager.isTimerActive(timer) || timerManager.isTimerPaused(timer) ?
+                    timer.isActive || timer.isPaused ?
                     AppColors.primary.opacity(0.3) :
                     (isHovered ? AppColors.divider : Color.clear),
                     lineWidth: 1
@@ -523,7 +543,7 @@ struct TimerRowView: View {
     }
 
     private func toggleTimer() {
-        if timerManager.isTimerActive(timer) {
+        if timer.isActive {
             timerManager.stopTimer(timer)
         } else {
             timerManager.startTimer(timer)
@@ -583,6 +603,7 @@ struct StatusBadge: View {
 struct TimerContextMenu: View {
     @EnvironmentObject var timerManager: TimerManager
     let timer: CountdownTimer
+    let onDelete: () -> Void
 
     var body: some View {
         Button(action: { timerManager.startTimer(timer) }) {
@@ -595,7 +616,7 @@ struct TimerContextMenu: View {
 
         Divider()
 
-        Button(role: .destructive, action: { timerManager.deleteTimer(timer) }) {
+        Button(role: .destructive, action: { onDelete() }) {
             Label("删除", systemImage: "trash")
         }
     }
