@@ -126,8 +126,9 @@ extension Color {
 extension View {
     func cardStyle() -> some View {
         self
+            .padding(AppSpacing.lg)
             .background(AppColors.cardBackground)
-            .cornerRadius(AppCornerRadius.lg)
+            .cornerRadius(AppCornerRadius.xl)
             .shadow(
                 color: AppShadows.md.color,
                 radius: AppShadows.md.radius,

@@ -1,212 +1,160 @@
 import SwiftUI
 
-/// 菜单栏弹窗视图
-/// 显示活跃计时器和控制选项，确保与主应用状态同步
 @available(macOS 14.0, *)
 struct MenuBarPopoverView: View {
     @EnvironmentObject var timerManager: TimerManager
-    @State private var hoveredItemId: UUID?
-    @State private var isClosing = false
 
     var body: some View {
         VStack(spacing: 0) {
-            headerView
+            headerSection
 
             Divider()
 
-            if !timerManager.activeTimers.isEmpty {
-                activeTimersSection
-                Divider()
-            }
-
-            quickActionsSection
-
-            if !timerManager.timers.isEmpty {
-                Divider()
-                timerListSection
+            if timerManager.activeTimers.isEmpty {
+                emptyStateSection
+            } else {
+                timersListSection
             }
 
             Divider()
 
-            footerView
+            footerSection
         }
-        .frame(width: 300)
+        .frame(width: 280)
         .background(Color(NSColor.controlBackgroundColor))
     }
 
-    private var headerView: some View {
+    private var headerSection: some View {
         HStack {
-            HStack(spacing: 6) {
-                Image(systemName: "timer")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
+            Image(systemName: "timer")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
 
-                Text("倒计时提醒")
-                    .font(.system(size: 13, weight: .semibold))
-            }
+            Text("倒计时")
+                .font(.system(size: 13, weight: .semibold))
 
             Spacer()
 
-            Menu {
-                ForEach(MenuBarDisplayMode.allCases, id: \.self) { mode in
-                    Button(action: {
-                        MenuBarManager.shared.setDisplayMode(mode)
-                    }) {
-                        HStack {
-                            Text(mode.rawValue)
-                            if MenuBarManager.shared.displayMode == mode {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "eye")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-            }
-            .menuStyle(BorderlessButtonMenuStyle())
-
-            Button(action: {
-                MenuBarManager.shared.showMainWindow()
-            }) {
-                Image(systemName: "arrow.up.right.square")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+            Button(action: createNewTimer) {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.accentColor)
+                    .frame(width: 28, height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.accentColor.opacity(0.15))
+                    )
             }
             .buttonStyle(PlainButtonStyle())
+            .help("新建倒计时")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
-    private var activeTimersSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("进行中 (\(timerManager.activeTimers.count))")
-                .font(.system(size: 11, weight: .medium))
+    private var emptyStateSection: some View {
+        VStack(spacing: 12) {
+            Spacer()
+
+            Image(systemName: "timer")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary.opacity(0.5))
+
+            Text("暂无进行中的计时器")
+                .font(.system(size: 12))
                 .foregroundColor(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
 
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(timerManager.activeTimers) { timer in
-                        ActiveTimerRow(timer: timer)
-                            .environmentObject(timerManager)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-            }
-            .frame(maxHeight: 150)
+            Text("点击 + 新建一个")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary.opacity(0.7))
+
+            Spacer()
         }
-        .background(Color.accentColor.opacity(0.05))
+        .frame(maxWidth: .infinity)
+        .frame(height: 180)
     }
 
-    private var quickActionsSection: some View {
-        VStack(spacing: 0) {
-            if !timerManager.activeTimers.isEmpty {
-                let allPaused = timerManager.activeTimers.allSatisfy { $0.isPaused }
-                MenuBarActionRow(
-                    icon: allPaused ? "play.fill" : "pause.fill",
-                    title: allPaused ? "全部继续" : "全部暂停",
-                    color: allPaused ? .green : .orange
-                ) {
-                    toggleAllTimers()
-                }
-            }
-
-            if !timerManager.activeTimers.isEmpty {
-                MenuBarActionRow(
-                    icon: "stop.fill",
-                    title: "全部停止",
-                    color: .red
-                ) {
-                    stopAllTimers()
-                }
-            }
-
-            MenuBarActionRow(
-                icon: "plus",
-                title: "新建倒计时",
-                color: .accentColor
-            ) {
-                MenuBarManager.shared.closeMenu()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    NotificationCenter.default.post(name: AppNotifications.showAddTimerSheet, object: nil)
-                    MenuBarManager.shared.showMainWindow()
-                }
-            }
-
-            MenuBarActionRow(
-                icon: "window",
-                title: "打开主窗口",
-                color: .secondary
-            ) {
-                MenuBarManager.shared.showMainWindow()
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var timerListSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("所有倒计时")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(timerManager.timers.prefix(5)) { timer in
-                        TimerListRow(
-                            timer: timer,
-                            isHovered: hoveredItemId == timer.id
-                        )
+    private var timersListSection: some View {
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(timerManager.activeTimers) { timer in
+                    TimerCard(timer: timer)
                         .environmentObject(timerManager)
-                        .onHover { isHovered in
-                            hoveredItemId = isHovered ? timer.id : nil
-                        }
-                    }
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
             }
-            .frame(maxHeight: 120)
+            .padding(12)
         }
+        .frame(maxHeight: 240)
     }
 
-    private var footerView: some View {
+    private var footerSection: some View {
         HStack {
-            Text("\(timerManager.timers.count) 个任务")
+            Text("\(timerManager.timers.count) 个计时器")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
             Spacer()
 
-            Button(action: {
-                NSApp.terminate(nil)
-            }) {
+            if !timerManager.activeTimers.isEmpty {
+                Button(action: toggleAllTimers) {
+                    Text(allPaused ? "全部继续" : "全部暂停")
+                        .font(.system(size: 11))
+                        .foregroundColor(.accentColor)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help(allPaused ? "继续所有计时器" : "暂停所有计时器")
+
+                Text("·")
+                    .foregroundColor(.secondary)
+
+                Button(action: stopAllTimers) {
+                    Text("取消全部")
+                        .font(.system(size: 11))
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help("取消所有计时器")
+
+                Text("·")
+                    .foregroundColor(.secondary)
+            }
+
+            Button(action: openMainWindow) {
+                Text("详情")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .help("打开主窗口")
+
+            Text("·")
+                .foregroundColor(.secondary)
+
+            Button(action: { NSApp.terminate(nil) }) {
                 Text("退出")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+    }
+
+    private var allPaused: Bool {
+        timerManager.activeTimers.allSatisfy { $0.isPaused }
     }
 
     private func toggleAllTimers() {
-        let allPaused = timerManager.activeTimers.allSatisfy { $0.isPaused }
         for timer in timerManager.activeTimers {
-            if allPaused && timer.isPaused {
-                timerManager.resumeTimer(timer)
-            } else if !allPaused && timer.isActive {
-                timerManager.pauseTimer(timer)
+            if allPaused {
+                if timer.isPaused {
+                    timerManager.resumeTimer(timer)
+                }
+            } else {
+                if timer.isActive {
+                    timerManager.pauseTimer(timer)
+                }
             }
         }
     }
@@ -216,214 +164,111 @@ struct MenuBarPopoverView: View {
             timerManager.stopTimer(timer)
         }
     }
+
+    private func createNewTimer() {
+        MenuBarManager.shared.closeMenu()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            NotificationCenter.default.post(name: AppNotifications.showAddTimerSheet, object: nil)
+            MenuBarManager.shared.showMainWindow()
+        }
+    }
+
+    private func openMainWindow() {
+        MenuBarManager.shared.showMainWindow()
+    }
 }
 
-// MARK: - Active Timer Row
 @available(macOS 14.0, *)
-struct ActiveTimerRow: View {
+struct TimerCard: View {
     @EnvironmentObject var timerManager: TimerManager
     @ObservedObject var timer: CountdownTimer
-
-    private var isTimerActive: Bool {
-        timer.isActive && !timer.isPaused
-    }
+    @State private var isHovering = false
 
     private var formattedTime: String {
         timerManager.formatTime(timer.remainingTime)
     }
 
-    private var iconName: String {
-        if timer.title.contains("水") { return "drop.fill" }
-        else if timer.title.contains("休息") || timer.title.contains("息") { return "bed.double.fill" }
-        else if timer.title.contains("工作") || timer.title.contains("专注") { return "briefcase.fill" }
-        else if timer.title.contains("运动") || timer.title.contains("锻炼") { return "figure.walk" }
-        else { return "timer" }
-    }
-
     var body: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(isTimerActive ? Color.accentColor.opacity(0.15) : Color.orange.opacity(0.15))
-                    .frame(width: 28, height: 28)
+        HStack(spacing: 10) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
 
-                Image(systemName: iconName)
-                    .font(.system(size: 12))
-                    .foregroundColor(isTimerActive ? .accentColor : .orange)
-            }
-
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(timer.title)
                     .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.primary)
                     .lineLimit(1)
 
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(isTimerActive ? Color.green : Color.orange)
-                        .frame(width: 5, height: 5)
-
-                    Text(isTimerActive ? "进行中" : "已暂停")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                }
+                Text(formattedTime)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(timer.isPaused ? .orange : .secondary)
             }
 
             Spacer()
 
-            Text(formattedTime)
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundColor(.accentColor)
-
-            HStack(spacing: 4) {
-                Button(action: {
-                    if isTimerActive {
+            HStack(spacing: 6) {
+                if timer.isActive {
+                    controlButton(icon: "pause.fill", color: .orange, tooltip: "暂停") {
                         timerManager.pauseTimer(timer)
-                    } else {
+                    }
+                } else if timer.isPaused {
+                    controlButton(icon: "play.fill", color: .green, tooltip: "继续") {
                         timerManager.resumeTimer(timer)
                     }
-                }) {
-                    Image(systemName: isTimerActive ? "pause.fill" : "play.fill")
-                        .font(.system(size: 8))
-                        .foregroundColor(.white)
-                        .frame(width: 18, height: 18)
-                        .background(Circle().fill(isTimerActive ? Color.orange : Color.green))
+                } else {
+                    controlButton(icon: "play.fill", color: .green, tooltip: "开始") {
+                        timerManager.startTimer(timer)
+                    }
                 }
-                .buttonStyle(PlainButtonStyle())
 
-                Button(action: {
+                controlButton(icon: "arrow.counterclockwise", color: .gray, tooltip: "重置") {
+                    timerManager.resetTimer(timer)
+                }
+
+                controlButton(icon: "xmark", color: .red, tooltip: "取消") {
                     timerManager.stopTimer(timer)
-                }) {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 8))
-                        .foregroundColor(.white)
-                        .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.red))
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(NSColor.controlBackgroundColor))
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isHovering ? Color.primary.opacity(0.06) : Color.primary.opacity(0.03))
         )
-    }
-}
-
-// MARK: - Menu Bar Action Row
-@available(macOS 14.0, *)
-struct MenuBarActionRow: View {
-    let icon: String
-    let title: String
-    let color: Color
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(color.opacity(0.15))
-                        .frame(width: 22, height: 22)
-
-                    Image(systemName: icon)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(color)
-                }
-
-                Text(title)
-                    .font(.system(size: 12))
-                    .foregroundColor(.primary)
-
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isHovered ? Color.secondary.opacity(0.1) : Color.clear)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isHovering ? Color.secondary.opacity(0.2) : Color.clear, lineWidth: 1)
+        )
         .onHover { hovering in
-            isHovered = hovering
-        }
-    }
-}
-
-// MARK: - Timer List Row
-@available(macOS 14.0, *)
-struct TimerListRow: View {
-    @EnvironmentObject var timerManager: TimerManager
-    @ObservedObject var timer: CountdownTimer
-    let isHovered: Bool
-
-    private var isActiveOrPaused: Bool {
-        timer.isActive || timer.isPaused
-    }
-
-    private var iconName: String {
-        if timer.title.contains("水") { return "drop.fill" }
-        else if timer.title.contains("休息") || timer.title.contains("息") { return "bed.double.fill" }
-        else if timer.title.contains("工作") || timer.title.contains("专注") { return "briefcase.fill" }
-        else if timer.title.contains("运动") || timer.title.contains("锻炼") { return "figure.walk" }
-        else { return "timer" }
-    }
-
-    private func toggleTimer() {
-        if isActiveOrPaused {
-            timerManager.stopTimer(timer)
-        } else {
-            timerManager.startTimer(timer)
-        }
-    }
-
-    var body: some View {
-        Button(action: toggleTimer) {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(isActiveOrPaused
-                              ? Color.accentColor.opacity(0.15)
-                              : Color.secondary.opacity(0.1))
-                        .frame(width: 24, height: 24)
-
-                    Image(systemName: iconName)
-                        .font(.system(size: 10))
-                        .foregroundColor(isActiveOrPaused
-                                         ? .accentColor
-                                         : .secondary)
-                }
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(timer.title)
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(1)
-
-                    Text(timer.formattedDuration)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                if isActiveOrPaused {
-                    Text(timerManager.formatTime(timer.remainingTime))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.accentColor)
-                }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isActiveOrPaused
-                          ? Color.accentColor.opacity(0.05)
-                          : (isHovered ? Color.secondary.opacity(0.05) : Color.clear))
-            )
+        }
+    }
+
+    private var statusColor: Color {
+        if timer.isActive {
+            return .green
+        } else if timer.isPaused {
+            return .orange
+        }
+        return .gray
+    }
+
+    private func controlButton(icon: String, color: Color, tooltip: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(isHovering ? color : .secondary)
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(isHovering ? color.opacity(0.12) : Color.clear)
+                )
         }
         .buttonStyle(PlainButtonStyle())
+        .help(tooltip)
     }
 }

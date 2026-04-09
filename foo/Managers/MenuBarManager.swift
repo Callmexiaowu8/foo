@@ -4,12 +4,6 @@ import SwiftUI
 import Combine
 import os.log
 
-enum MenuBarDisplayMode: String, CaseIterable {
-    case staticIcon = "静态图标"
-    case dynamicTimer = "动态倒计时"
-    case compact = "紧凑模式"
-}
-
 @available(macOS 14.0, *)
 @MainActor
 final class MenuBarManager: NSObject, ObservableObject {
@@ -17,7 +11,6 @@ final class MenuBarManager: NSObject, ObservableObject {
 
     private static let logger = Logger(subsystem: "com.foo.CountdownReminder", category: "MenuBarManager")
 
-    @Published var displayMode: MenuBarDisplayMode = .dynamicTimer
     @Published var isMenuOpen = false
     @Published var currentTimeString: String = ""
     @Published var shouldShowMainWindow = false
@@ -53,10 +46,6 @@ final class MenuBarManager: NSObject, ObservableObject {
             Self.logger.error("Failed to create status bar button")
             return
         }
-
-        let image = NSImage(systemSymbolName: "timer", accessibilityDescription: "倒计时提醒")
-        image?.isTemplate = true
-        button.image = image
 
         button.action = #selector(handleClick)
         button.target = self
@@ -112,20 +101,47 @@ final class MenuBarManager: NSObject, ObservableObject {
 
         if activeCount == 0 {
             button.title = ""
+            button.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "倒计时提醒")
+            button.image?.isTemplate = true
             currentTimeString = ""
         } else if activeCount == 1, let timer = activeTimers.first {
             let timeString = timerManager.formatTime(timer.remainingTime)
-            button.title = " \(timeString)"
+            button.attributedTitle = createAttributedTimeString(timeString)
+            button.image = nil
             currentTimeString = timeString
         } else {
             if let firstTimer = activeTimers.first {
                 let timeString = timerManager.formatTime(firstTimer.remainingTime)
-                button.title = " \(timeString) | \(activeCount)"
+                let displayString = "\(timeString) | \(activeCount)"
+                button.attributedTitle = createAttributedTimeString(displayString)
+                button.image = nil
                 currentTimeString = timeString
             } else {
                 button.title = " \(activeCount)"
+                button.image = nil
             }
         }
+    }
+
+    private func createAttributedTimeString(_ timeString: String) -> NSAttributedString {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.labelColor
+        ]
+
+        let attachment = NSTextAttachment()
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: NSFont.systemFontSize, weight: .medium)
+        if let hourglassImage = NSImage(systemSymbolName: "hourglass", accessibilityDescription: "计时")?.withSymbolConfiguration(iconConfig) {
+            attachment.image = hourglassImage
+        }
+
+        let attachmentString = NSAttributedString(attachment: attachment)
+        let mutableString = NSMutableAttributedString()
+        mutableString.append(attachmentString)
+        mutableString.append(NSAttributedString(string: " \(timeString)", attributes: attributes))
+
+        return mutableString
     }
 
     @objc private func handleClick() {
@@ -227,11 +243,6 @@ final class MenuBarManager: NSObject, ObservableObject {
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         mainWindow = window
-    }
-
-    func setDisplayMode(_ mode: MenuBarDisplayMode) {
-        displayMode = mode
-        updateMenuBar()
     }
 
     func registerMainWindow(_ window: NSWindow) {
