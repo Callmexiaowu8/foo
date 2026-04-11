@@ -81,6 +81,8 @@ class TimerManager: ObservableObject, TimerManaging {
     private var needsRefresh = false
     private var isDirty = false
     private var saveTask: Task<Void, Never>?
+    private var completedTimerIds: Set<UUID> = []
+    private var backgroundEnterTime: Date?
 
     // MARK: - Initialization
     init() {
@@ -143,18 +145,17 @@ class TimerManager: ObservableObject, TimerManaging {
     }
 
     private func updateAllTimers() {
-        var hasChanges = false
+        var hasCompleted = false
 
         for timer in timers where timer.isActive && !timer.isPaused {
             timer.tick()
             if timer.remainingTime <= 0 {
                 completeTimer(timer)
+                hasCompleted = true
             }
-            hasChanges = true
-            Self.logger.debug("Timer ticked: \(timer.title), remaining: \(timer.remainingTime)")
         }
 
-        if hasChanges {
+        if hasCompleted {
             updateActiveTimers()
             markDirty()
         }
@@ -196,13 +197,26 @@ class TimerManager: ObservableObject, TimerManaging {
     }
 
     func updateTimer(_ timer: CountdownTimer) {
+        // 验证并更新计时器属性
+        let validatedTitle = String(timer.title.prefix(Constants.maxTitleLength)).trimmingCharacters(in: .whitespacesAndNewlines)
+        timer.title = validatedTitle.isEmpty ? "未命名计时器" : validatedTitle
+        
+        if timer.duration > 0 && timer.remainingTime > timer.duration {
+            timer.remainingTime = timer.duration
+        }
+        
         updateActiveTimers()
         markDirty()
+        Self.logger.info("Timer updated: \(timer.title)")
     }
 
     func deleteTimer(_ timer: CountdownTimer) {
         timer.stop()
         timers.removeAll { $0.id == timer.id }
+        completedTimerIds.remove(timer.id)
+        if completedTimer?.id == timer.id {
+            completedTimer = nil
+        }
         updateActiveTimers()
         markDirty()
         Self.logger.info("Timer deleted: \(timer.title)")
@@ -222,10 +236,18 @@ class TimerManager: ObservableObject, TimerManaging {
 
     func stopTimer(_ timer: CountdownTimer) {
         performStateChange(timer, state: .stopped)
+        completedTimerIds.remove(timer.id)
+        if completedTimer?.id == timer.id {
+            completedTimer = nil
+        }
     }
 
     func resetTimer(_ timer: CountdownTimer) {
         timer.reset()
+        completedTimerIds.remove(timer.id)
+        if completedTimer?.id == timer.id {
+            completedTimer = nil
+        }
         updateActiveTimers()
         markDirty()
     }
@@ -245,13 +267,28 @@ class TimerManager: ObservableObject, TimerManaging {
     // MARK: - Completion Handling
     private func completeTimer(_ timer: CountdownTimer) {
         guard timer.remainingTime <= 0 else { return }
-
+        
+        // 防止重复完成同一计时器
+        guard !completedTimerIds.contains(timer.id) else {
+            Self.logger.warning("Timer already completed, skipping: \(timer.title)")
+            return
+        }
+        
         timer.stop()
+        completedTimerIds.insert(timer.id)
         completedTimer = timer
 
-        if timer.showFullscreenAlert {
-            isFullscreenAlertPresented = true
+        switch timer.reminderType {
+        case .fullscreen:
+            FullscreenAlertManager.shared.showAlert(timer: timer, autoDismissSeconds: timer.autoDismissSeconds) { [weak self] in
+                self?.dismissAlert()
+            }
             Self.logger.info("Fullscreen alert shown for: \(timer.title)")
+        case .banner:
+            BannerAlertManager.shared.showBanner(timer: timer, autoDismissSeconds: 10) { [weak self] in
+                self?.dismissAlert()
+            }
+            Self.logger.info("Banner alert shown for: \(timer.title)")
         }
 
         sendNotification(for: timer)
@@ -276,10 +313,26 @@ class TimerManager: ObservableObject, TimerManaging {
             repeatFrequency: timer.repeatFrequency,
             endDate: timer.endDate,
             soundEnabled: timer.soundEnabled,
-            showFullscreenAlert: timer.showFullscreenAlert
+            reminderType: timer.reminderType
         )
+        
+        // 复制时间段设置
+        nextTimer.reminderStartHour = timer.reminderStartHour
+        nextTimer.reminderStartMinute = timer.reminderStartMinute
+        nextTimer.reminderEndHour = timer.reminderEndHour
+        nextTimer.reminderEndMinute = timer.reminderEndMinute
+        nextTimer.hasTimeRange = timer.hasTimeRange
+        nextTimer.autoDismissSeconds = timer.autoDismissSeconds
 
         addTimer(nextTimer)
+        
+        // 自动开始新计时器（如果在时间范围内）
+        if nextTimer.isWithinTimeRange() {
+            startTimer(nextTimer)
+            Self.logger.info("Auto-started repeat timer: \(nextTimer.title)")
+        } else {
+            Self.logger.info("Repeat timer created but not started (outside time range): \(nextTimer.title)")
+        }
     }
 
     // MARK: - Snooze
@@ -293,7 +346,7 @@ class TimerManager: ObservableObject, TimerManaging {
             description: completedTimer.timerDescription,
             duration: TimeInterval(minutes * 60),
             soundEnabled: completedTimer.soundEnabled,
-            showFullscreenAlert: completedTimer.showFullscreenAlert
+            reminderType: completedTimer.reminderType
         )
 
         addTimer(snoozeTimer)
@@ -302,6 +355,8 @@ class TimerManager: ObservableObject, TimerManaging {
     }
 
     func dismissAlert() {
+        FullscreenAlertManager.shared.dismissAlert()
+        BannerAlertManager.shared.dismissAllBanners()
         isFullscreenAlertPresented = false
         completedTimer = nil
     }
@@ -385,7 +440,7 @@ class TimerManager: ObservableObject, TimerManaging {
                     let createdAt: Date
                     let lastStartedAt: Date?
                     let soundEnabled: Bool
-                    let showFullscreenAlert: Bool
+                    let reminderType: ReminderType?
                 }
 
                 let legacyTimers = try JSONDecoder().decode([LegacyTimer].self, from: data)
@@ -398,7 +453,7 @@ class TimerManager: ObservableObject, TimerManaging {
                         repeatFrequency: legacy.repeatFrequency,
                         endDate: legacy.endDate,
                         soundEnabled: legacy.soundEnabled,
-                        showFullscreenAlert: legacy.showFullscreenAlert
+                        reminderType: legacy.reminderType ?? .fullscreen
                     )
                     timer.remainingTime = legacy.remainingTime
                     timer.isActive = false
@@ -418,29 +473,45 @@ class TimerManager: ObservableObject, TimerManaging {
     // MARK: - Background Handling
     nonisolated func handleAppDidEnterBackground() {
         Task { @MainActor in
+            backgroundEnterTime = Date()
             saveIfDirty()
+            Self.logger.info("App entered background, recording time")
         }
     }
 
     nonisolated func handleAppWillEnterForeground() {
         Task { @MainActor in
+            guard let backgroundEnterTime = backgroundEnterTime else {
+                Self.logger.debug("No background time recorded, skipping adjustment")
+                return
+            }
+            
+            let timeInBackground = Date().timeIntervalSince(backgroundEnterTime)
+            self.backgroundEnterTime = nil
+            
+            Self.logger.info("App entering foreground, time in background: \(String(format: "%.1f", timeInBackground))s")
+            
+            var hasChanges = false
+            
             for timer in timers where timer.isActive && !timer.isPaused {
-                guard let lastStartedAt = timer.lastStartedAt else { continue }
-
-                let timeSinceLastUpdate = Date().timeIntervalSince(lastStartedAt)
-                let secondsToSubtract = Int(timeSinceLastUpdate)
-
-                if secondsToSubtract > 0 {
-                    timer.remainingTime = max(0, timer.remainingTime - TimeInterval(secondsToSubtract))
-                    timer.lastStartedAt = Date()
-
+                let timeToSubtract = min(timeInBackground, timer.remainingTime)
+                
+                if timeToSubtract > 0 {
+                    timer.remainingTime = max(0, timer.remainingTime - timeToSubtract)
+                    hasChanges = true
+                    
+                    Self.logger.debug("Adjusted timer '\(timer.title)': subtracted \(String(format: "%.1f", timeToSubtract))s, remaining: \(String(format: "%.1f", timer.remainingTime))s")
+                    
                     if timer.remainingTime <= 0 {
                         completeTimer(timer)
                     }
                 }
             }
-            updateActiveTimers()
-            markDirty()
+            
+            if hasChanges {
+                updateActiveTimers()
+                markDirty()
+            }
         }
     }
 
@@ -461,7 +532,7 @@ class TimerManager: ObservableObject, TimerManaging {
             repeatFrequency: timer.repeatFrequency,
             endDate: timer.endDate,
             soundEnabled: timer.soundEnabled,
-            showFullscreenAlert: timer.showFullscreenAlert
+            reminderType: timer.reminderType
         )
         cloned.remainingTime = timer.remainingTime
         cloned.isActive = timer.isActive

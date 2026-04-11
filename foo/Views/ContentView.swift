@@ -10,79 +10,49 @@ struct ContentView: View {
     @State private var showingDeleteConfirmation = false
     @State private var timerToDelete: CountdownTimer?
 
+    private var sortedTimers: [CountdownTimer] {
+        timerManager.timers.sorted { timer1, timer2 in
+            let t1Running = timer1.isActive && !timer1.isPaused
+            let t2Running = timer2.isActive && !timer2.isPaused
+            let t1Paused = timer1.isPaused
+            let t2Paused = timer2.isPaused
+            
+            // 优先级1: 运行中的计时器排在最前
+            if t1Running && !t2Running { return true }
+            if !t1Running && t2Running { return false }
+            
+            // 优先级2: 都在运行中，按剩余时间升序（即将完成的在前）
+            if t1Running && t2Running {
+                return timer1.remainingTime < timer2.remainingTime
+            }
+            
+            // 优先级3: 已暂停的计时器排在未开始之前
+            if t1Paused && !t2Paused { return true }
+            if !t1Paused && t2Paused { return false }
+            
+            // 优先级4: 都已暂停，按剩余时间升序
+            if t1Paused && t2Paused {
+                return timer1.remainingTime < timer2.remainingTime
+            }
+            
+            // 优先级5: 都未开始，按创建时间倒序（最新创建的在前）
+            return timer1.createdAt > timer2.createdAt
+        }
+    }
+
     var body: some View {
         ZStack {
-            // 背景渐变
             AppColors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // 自定义标题栏
-                HStack {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "timer")
-                            .font(AppFonts.title3)
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [AppColors.primary, AppColors.primaryLight],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-
-                        Text("倒计时提醒")
-                            .font(AppFonts.title2)
-                            .foregroundColor(AppColors.textPrimary)
-                    }
-
-                    Spacer()
-                }
-                .padding(.horizontal, AppSpacing.lg)
-                .padding(.vertical, AppSpacing.md)
-                .background(AppColors.cardBackground)
+                headerSection
 
                 Divider()
                     .background(AppColors.divider)
 
-                // 活跃倒计时列表
-                if !timerManager.activeTimers.isEmpty {
-                    activeTimersSection
-                }
+                timersListSection
 
-                // 倒计时列表
-                ScrollView {
-                    LazyVStack(spacing: AppSpacing.md) {
-                        ForEach(timerManager.timers) { timer in
-                            TimerRowView(
-                                timer: timer,
-                                isHovered: hoveredTimerId == timer.id
-                            )
-                            .environmentObject(timerManager)
-                            .onTapGesture {
-                                withAnimation(AppAnimations.spring) {
-                                    selectedTimer = timer
-                                    showingEditTimer = true
-                                }
-                            }
-                            .onHover { isHovered in
-                                withAnimation(AppAnimations.fast) {
-                                    hoveredTimerId = isHovered ? timer.id : nil
-                                }
-                            }
-                            .contextMenu {
-                                TimerContextMenu(timer: timer) {
-                                    timerToDelete = timer
-                                    showingDeleteConfirmation = true
-                                }
-                            }
-                            .transition(.scale.combined(with: .opacity))
-                        }
-                    }
-                    .padding(.horizontal, AppSpacing.lg)
-                    .padding(.vertical, AppSpacing.md)
-                }
-
-                // 底部工具栏
                 bottomToolbar
             }
         }
@@ -94,13 +64,6 @@ struct ContentView: View {
             if let timer = selectedTimer {
                 EditTimerView(timer: timer)
                     .environmentObject(timerManager)
-            }
-        }
-        .overlay {
-            if timerManager.isFullscreenAlertPresented {
-                FullscreenAlertView()
-                    .environmentObject(timerManager)
-                    .transition(.opacity)
             }
         }
         .alert("删除计时器", isPresented: $showingDeleteConfirmation) {
@@ -129,33 +92,119 @@ struct ContentView: View {
         .frame(minWidth: 450, minHeight: 500)
     }
 
-    // MARK: - Active Timers Section
-    private var activeTimersSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+    private var headerSection: some View {
+        HStack {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "timer")
+                    .font(AppFonts.title3)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [AppColors.primary, AppColors.primaryLight],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                Text("倒计时提醒")
+                    .font(AppFonts.title2)
+                    .foregroundColor(AppColors.textPrimary)
+            }
+
+            Spacer()
+
             HStack(spacing: AppSpacing.md) {
-                ForEach(timerManager.activeTimers) { timer in
-                    ActiveTimerCard(timer: timer)
-                        .environmentObject(timerManager)
-                        .frame(width: 320)
+                if !timerManager.activeTimers.isEmpty {
+                    HStack(spacing: AppSpacing.xs) {
+                        Circle()
+                            .fill(AppColors.success)
+                            .frame(width: 8, height: 8)
+
+                        Text("\(timerManager.activeTimers.count) 进行中")
+                            .font(AppFonts.footnote)
+                            .foregroundColor(AppColors.textSecondary)
+                    }
+                    .padding(.horizontal, AppSpacing.sm)
+                    .padding(.vertical, AppSpacing.xs)
+                    .background(
+                        Capsule()
+                            .fill(AppColors.success.opacity(0.1))
+                    )
                 }
             }
-            .padding(.horizontal, AppSpacing.lg)
-            .padding(.vertical, AppSpacing.md)
         }
-        .background(
-            LinearGradient(
-                colors: [AppColors.primary.opacity(0.05), AppColors.background],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.vertical, AppSpacing.md)
+        .background(AppColors.cardBackground)
     }
 
-    // MARK: - 底部工具栏
+    private var timersListSection: some View {
+        ScrollView {
+            if timerManager.timers.isEmpty {
+                emptyStateView
+            } else {
+                LazyVStack(spacing: AppSpacing.md) {
+                    ForEach(sortedTimers) { timer in
+                        UnifiedTimerRow(
+                            timer: timer,
+                            isHovered: hoveredTimerId == timer.id,
+                            onToggle: { toggleTimer(timer) },
+                            onStart: { timerManager.startTimer(timer) },
+                            onPause: { timerManager.pauseTimer(timer) },
+                            onResume: { timerManager.resumeTimer(timer) },
+                            onReset: { timerManager.resetTimer(timer) },
+                            onSkip: { timerManager.skipTimer(timer) },
+                            onDelete: {
+                                timerToDelete = timer
+                                showingDeleteConfirmation = true
+                            }
+                        )
+                        .environmentObject(timerManager)
+                        .onHover { isHovered in
+                            withAnimation(AppAnimations.fast) {
+                                hoveredTimerId = isHovered ? timer.id : nil
+                            }
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.vertical, AppSpacing.md)
+            }
+        }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: AppSpacing.lg) {
+            Spacer()
+
+            Image(systemName: "timer")
+                .font(.system(size: 56))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [AppColors.primary.opacity(0.6), AppColors.primaryLight.opacity(0.4)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            VStack(spacing: AppSpacing.sm) {
+                Text("暂无计时器")
+                    .font(AppFonts.title3)
+                    .foregroundColor(AppColors.textPrimary)
+
+                Text("点击下方按钮创建一个新的计时器")
+                    .font(AppFonts.body)
+                    .foregroundColor(AppColors.textSecondary)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, AppSpacing.xl)
+    }
+
     private var bottomToolbar: some View {
         HStack {
-            // 新建按钮
             Button(action: {
                 withAnimation(AppAnimations.spring) {
                     showingAddTimer = true
@@ -173,28 +222,9 @@ struct ContentView: View {
 
             Spacer()
 
-            // 任务计数
-            HStack(spacing: AppSpacing.xs) {
-                Circle()
-                    .fill(AppColors.primary)
-                    .frame(width: 8, height: 8)
-
-                Text("\(timerManager.timers.count) 个任务")
-                    .font(AppFonts.footnote)
-                    .foregroundColor(AppColors.textSecondary)
-            }
-            .padding(.horizontal, AppSpacing.md)
-            .padding(.vertical, AppSpacing.sm)
-            .background(
-                Capsule()
-                    .fill(AppColors.cardBackground)
-                    .shadow(
-                        color: AppShadows.sm.color,
-                        radius: AppShadows.sm.radius,
-                        x: AppShadows.sm.x,
-                        y: AppShadows.sm.y
-                    )
-            )
+            Text("\(timerManager.timers.count) 个计时器")
+                .font(AppFonts.footnote)
+                .foregroundColor(AppColors.textSecondary)
         }
         .padding(.horizontal, AppSpacing.lg)
         .padding(.vertical, AppSpacing.md)
@@ -209,415 +239,231 @@ struct ContentView: View {
         )
     }
 
-    private func deleteTimers(at offsets: IndexSet) {
-        for index in offsets {
-            let timer = timerManager.timers[index]
-            withAnimation(AppAnimations.normal) {
-                timerManager.deleteTimer(timer)
+    private func toggleTimer(_ timer: CountdownTimer) {
+        withAnimation(AppAnimations.spring) {
+            if timer.isActive {
+                timerManager.stopTimer(timer)
+            } else {
+                timerManager.startTimer(timer)
             }
         }
     }
 }
 
-// MARK: - Active Timer Card
-
 @available(macOS 14.0, *)
-struct ActiveTimerCard: View {
-    @EnvironmentObject var timerManager: TimerManager
+struct UnifiedTimerRow: View {
     @ObservedObject var timer: CountdownTimer
-    @State private var isHovering = false
+    let isHovered: Bool
+    let onToggle: () -> Void
+    let onStart: () -> Void
+    let onPause: () -> Void
+    let onResume: () -> Void
+    let onReset: () -> Void
+    let onSkip: () -> Void
+    let onDelete: () -> Void
 
-    var body: some View {
-        VStack(spacing: AppSpacing.md) {
-            // 顶部信息栏
-            HStack {
-                HStack(spacing: AppSpacing.sm) {
-                    ZStack {
-                        Circle()
-                            .fill(AppColors.primary.opacity(0.15))
-                            .frame(width: 36, height: 36)
-
-                        Image(systemName: iconName)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(AppColors.primary)
-                    }
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(timer.title)
-                            .font(AppFonts.callout.weight(.semibold))
-                            .lineLimit(1)
-                            .foregroundColor(AppColors.textPrimary)
-
-                        StatusBadge(isActive: timer.isActive, isPaused: timer.isPaused)
-                    }
-                }
-
-                Spacer()
-            }
-
-            // 倒计时显示
-            HStack {
-                Spacer()
-                Text(timerManager.formatTime(timer.remainingTime))
-                    .font(AppFonts.timerDisplayMini)
-                    .foregroundColor(timer.isActive && !timer.isPaused ? AppColors.primary : AppColors.textSecondary)
-                    .monospacedDigit()
-                Spacer()
-            }
-
-            // 进度条
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: AppCornerRadius.full)
-                        .fill(AppColors.divider)
-                        .frame(height: 6)
-
-                    RoundedRectangle(cornerRadius: AppCornerRadius.full)
-                        .fill(
-                            timer.isActive && !timer.isPaused ?
-                            AppColors.primary :
-                            AppColors.textTertiary
-                        )
-                        .frame(width: max(0, geometry.size.width * CGFloat(timer.progress)), height: 6)
-                        .animation(AppAnimations.slow, value: timer.progress)
-                }
-            }
-            .frame(height: 6)
-
-            // 控制按钮
-            HStack(spacing: AppSpacing.sm) {
-                if timer.isActive && !timer.isPaused {
-                    SmallControlButton(
-                        title: "暂停",
-                        icon: "pause.fill",
-                        color: AppColors.warning
-                    ) {
-                        timerManager.pauseTimer(timer)
-                    }
-
-                    SmallControlButton(
-                        title: "停止",
-                        icon: "stop.fill",
-                        color: AppColors.error
-                    ) {
-                        timerManager.stopTimer(timer)
-                    }
-                } else if timer.isPaused {
-                    SmallControlButton(
-                        title: "继续",
-                        icon: "play.fill",
-                        color: AppColors.success
-                    ) {
-                        timerManager.resumeTimer(timer)
-                    }
-
-                    SmallControlButton(
-                        title: "停止",
-                        icon: "stop.fill",
-                        color: AppColors.error
-                    ) {
-                        timerManager.stopTimer(timer)
-                    }
-                }
-
-                Spacer()
-
-                Button(action: { timerManager.skipTimer(timer) }) {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(AppColors.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            Circle()
-                                .fill(AppColors.divider.opacity(0.5))
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-        .padding(AppSpacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.lg)
-                .fill(AppColors.cardBackground)
-                .shadow(
-                    color: AppShadows.md.color,
-                    radius: AppShadows.md.radius,
-                    x: AppShadows.md.x,
-                    y: AppShadows.md.y
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppCornerRadius.lg)
-                .stroke(AppColors.primary.opacity(0.2), lineWidth: 1)
-        )
-        .scaleEffect(isHovering ? 1.02 : 1.0)
-        .onHover { hovering in
-            withAnimation(AppAnimations.spring) {
-                isHovering = hovering
-            }
-        }
-    }
-
-    private var iconName: String {
-        if timer.title.contains("水") {
-            return "drop.fill"
-        } else if timer.title.contains("休息") || timer.title.contains("息") {
-            return "bed.double.fill"
-        } else if timer.title.contains("工作") || timer.title.contains("专注") {
-            return "briefcase.fill"
-        } else if timer.title.contains("运动") || timer.title.contains("锻炼") {
-            return "figure.walk"
-        } else {
-            return "timer"
-        }
-    }
-}
-
-// MARK: - Small Control Button
-
-@available(macOS 14.0, *)
-struct SmallControlButton: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let action: () -> Void
+    @EnvironmentObject var timerManager: TimerManager
     @State private var isPressed = false
 
     var body: some View {
+        VStack(spacing: AppSpacing.md) {
+            HStack(spacing: AppSpacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(iconBackgroundColor)
+                        .frame(width: 52, height: 52)
+
+                    Image(systemName: iconName)
+                        .font(.system(size: 22))
+                        .foregroundColor(iconColor)
+                }
+
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text(timer.title)
+                        .font(AppFonts.callout.weight(.semibold))
+                        .foregroundColor(AppColors.textPrimary)
+                        .lineLimit(1)
+
+                    HStack(spacing: AppSpacing.sm) {
+                        Label(timer.formattedDuration, systemImage: "clock")
+                            .font(AppFonts.caption)
+                            .foregroundColor(AppColors.textSecondary)
+
+                        Text("•")
+                            .foregroundColor(AppColors.textTertiary)
+
+                        Text(timer.repeatFrequency.description)
+                            .font(AppFonts.caption)
+                            .foregroundColor(AppColors.textSecondary)
+                    }
+                }
+
+                Spacer()
+
+                if timer.isActive || timer.isPaused {
+                    Text(timerManager.formatTime(timer.remainingTime))
+                        .font(AppFonts.title3.monospacedDigit())
+                        .foregroundColor(timer.isActive ? AppColors.primary : AppColors.warning)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
+                        .background(
+                            Capsule()
+                                .fill(timer.isActive ? AppColors.primary.opacity(0.1) : AppColors.warning.opacity(0.1))
+                        )
+                }
+            }
+
+            if timer.isActive || timer.isPaused {
+                progressBar
+            }
+
+            controlButtons
+        }
+        .padding(AppSpacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: AppCornerRadius.xl)
+                .fill(AppColors.cardBackground)
+                .shadow(
+                    color: isHovered ? AppShadows.lg.color : AppShadows.md.color,
+                    radius: isHovered ? AppShadows.lg.radius : AppShadows.md.radius,
+                    x: 0,
+                    y: isHovered ? 6 : 3
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppCornerRadius.xl)
+                .stroke(borderColor, lineWidth: isHovered ? 1.5 : 1)
+        )
+        .scaleEffect(isPressed ? 0.98 : 1.0)
+        .onTapGesture {
+            onToggle()
+        }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            onDelete()
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    withAnimation(AppAnimations.fast) {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in
+                    withAnimation(AppAnimations.fast) {
+                        isPressed = false
+                    }
+                }
+        )
+    }
+
+    private var progressBar: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: AppCornerRadius.full)
+                    .fill(AppColors.divider)
+                    .frame(height: 4)
+
+                RoundedRectangle(cornerRadius: AppCornerRadius.full)
+                    .fill(progressColor)
+                    .frame(width: max(0, geometry.size.width * CGFloat(timer.progress)), height: 4)
+                    .animation(AppAnimations.slow, value: timer.progress)
+            }
+        }
+        .frame(height: 4)
+    }
+
+    private var controlButtons: some View {
+        HStack(spacing: AppSpacing.sm) {
+            if timer.isActive {
+                controlButton(title: "暂停", icon: "pause.fill", color: AppColors.warning, action: onPause)
+                controlButton(title: "重置", icon: "arrow.counterclockwise", color: AppColors.textSecondary, action: onReset)
+            } else if timer.isPaused {
+                controlButton(title: "继续", icon: "play.fill", color: AppColors.success, action: onResume)
+                controlButton(title: "重置", icon: "arrow.counterclockwise", color: AppColors.textSecondary, action: onReset)
+            } else {
+                controlButton(title: "开始", icon: "play.fill", color: AppColors.success, action: onStart)
+            }
+
+            Spacer()
+
+            if timer.repeatFrequency != .once {
+                controlButton(title: "跳过", icon: "forward.fill", color: AppColors.textSecondary, action: onSkip)
+            }
+
+            controlButton(title: "删除", icon: "trash", color: AppColors.error, action: onDelete)
+        }
+    }
+
+    private func controlButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                 Text(title)
-                    .font(AppFonts.caption.weight(.semibold))
+                    .font(AppFonts.caption.weight(.medium))
             }
-            .foregroundColor(.white)
+            .foregroundColor(color)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
                 Capsule()
-                    .fill(color)
-                    .shadow(color: color.opacity(0.4), radius: 4, x: 0, y: 2)
+                    .fill(color.opacity(0.12))
             )
         }
         .buttonStyle(PlainButtonStyle())
-        .scaleEffect(isPressed ? 0.95 : 1.0)
-        .onHover { hovering in
-            withAnimation(AppAnimations.fast) {
-                isPressed = hovering
-            }
-        }
-    }
-}
-
-// MARK: - Timer Row View
-
-@available(macOS 14.0, *)
-struct TimerRowView: View {
-    @EnvironmentObject var timerManager: TimerManager
-    @ObservedObject var timer: CountdownTimer
-    let isHovered: Bool
-    @State private var isPressed = false
-
-    var body: some View {
-        HStack(spacing: AppSpacing.md) {
-            // 图标
-            ZStack {
-                Circle()
-                    .fill(
-                        timer.isActive || timer.isPaused ?
-                        AppColors.primary.opacity(0.15) :
-                        AppColors.divider.opacity(0.5)
-                    )
-                    .frame(width: 48, height: 48)
-
-                Image(systemName: iconName)
-                    .font(.system(size: 20))
-                    .foregroundColor(
-                        timer.isActive || timer.isPaused ?
-                        AppColors.primary :
-                        AppColors.textSecondary
-                    )
-            }
-
-            // 信息 - 使用固定宽度避免挤压
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(timer.title)
-                    .font(AppFonts.callout.weight(.semibold))
-                    .foregroundColor(AppColors.textPrimary)
-                    .lineLimit(1)
-
-                HStack(spacing: AppSpacing.sm) {
-                    HStack(spacing: 2) {
-                        Image(systemName: "clock")
-                            .font(AppFonts.caption)
-                        Text(timer.formattedDuration)
-                            .font(AppFonts.caption)
-                    }
-                    .foregroundColor(AppColors.textSecondary)
-
-                    Text("•")
-                        .font(AppFonts.caption)
-                        .foregroundColor(AppColors.textTertiary)
-
-                    Text(timer.repeatFrequency.description)
-                        .font(AppFonts.caption)
-                        .foregroundColor(AppColors.textSecondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            // 右侧状态
-            HStack(spacing: AppSpacing.sm) {
-                if timer.isActive || timer.isPaused {
-                    Text(timerManager.formatTime(timer.remainingTime))
-                        .font(AppFonts.callout.monospacedDigit())
-                        .foregroundColor(AppColors.primary)
-                        .padding(.horizontal, AppSpacing.sm)
-                        .padding(.vertical, AppSpacing.xs)
-                        .background(
-                            Capsule()
-                                .fill(AppColors.primary.opacity(0.1))
-                        )
-                }
-
-                // 播放/停止按钮
-                Button(action: {
-                    withAnimation(AppAnimations.spring) {
-                        toggleTimer()
-                    }
-                }) {
-                    Image(systemName: timer.isActive ? "stop.fill" : "play.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(timer.isActive ? AppColors.error : AppColors.success)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            Circle()
-                                .fill(timer.isActive ? AppColors.error.opacity(0.1) : AppColors.success.opacity(0.1))
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-        .padding(AppSpacing.md)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.lg)
-                .fill(AppColors.cardBackground)
-                .shadow(
-                    color: isHovered ? AppShadows.md.color : AppShadows.sm.color,
-                    radius: isHovered ? AppShadows.md.radius : AppShadows.sm.radius,
-                    x: 0,
-                    y: isHovered ? 4 : 2
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppCornerRadius.lg)
-                .stroke(
-                    timer.isActive || timer.isPaused ?
-                    AppColors.primary.opacity(0.3) :
-                    (isHovered ? AppColors.divider : Color.clear),
-                    lineWidth: 1
-                )
-        )
-        .scaleEffect(isPressed ? 0.98 : (isHovered ? 1.01 : 1.0))
-        .onHover { hovering in
-            withAnimation(AppAnimations.fast) {
-                isPressed = hovering
-            }
-        }
     }
 
     private var iconName: String {
-        if timer.title.contains("水") {
+        let lowercased = timer.title.lowercased()
+        if lowercased.contains("水") || lowercased.contains("喝") {
             return "drop.fill"
-        } else if timer.title.contains("休息") || timer.title.contains("息") {
+        } else if lowercased.contains("休息") || lowercased.contains("睡眠") {
             return "bed.double.fill"
-        } else if timer.title.contains("工作") || timer.title.contains("专注") {
+        } else if lowercased.contains("工作") || lowercased.contains("专注") {
             return "briefcase.fill"
-        } else if timer.title.contains("运动") || timer.title.contains("锻炼") {
+        } else if lowercased.contains("运动") || lowercased.contains("锻炼") || lowercased.contains("跑步") {
             return "figure.walk"
-        } else {
-            return "timer"
+        } else if lowercased.contains("吃饭") || lowercased.contains("午餐") || lowercased.contains("晚餐") {
+            return "fork.knife"
+        } else if lowercased.contains("学习") || lowercased.contains("读书") {
+            return "book.fill"
         }
+        return "timer"
     }
 
-    private func toggleTimer() {
+    private var iconBackgroundColor: Color {
         if timer.isActive {
-            timerManager.stopTimer(timer)
-        } else {
-            timerManager.startTimer(timer)
+            return AppColors.primary.opacity(0.15)
+        } else if timer.isPaused {
+            return AppColors.warning.opacity(0.15)
         }
-    }
-}
-
-// MARK: - Status Badge
-
-@available(macOS 14.0, *)
-struct StatusBadge: View {
-    let isActive: Bool
-    let isPaused: Bool
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 6, height: 6)
-
-            Text(statusText)
-                .font(AppFonts.caption.weight(.medium))
-        }
-        .foregroundColor(statusColor)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 2)
-        .background(
-            Capsule()
-                .fill(statusColor.opacity(0.1))
-        )
+        return AppColors.divider.opacity(0.5)
     }
 
-    private var statusColor: Color {
-        if isActive && !isPaused {
-            return AppColors.success
-        } else if isPaused {
+    private var iconColor: Color {
+        if timer.isActive {
+            return AppColors.primary
+        } else if timer.isPaused {
             return AppColors.warning
-        } else {
-            return AppColors.textSecondary
         }
+        return AppColors.textSecondary
     }
 
-    private var statusText: String {
-        if isActive && !isPaused {
-            return "进行中"
-        } else if isPaused {
-            return "已暂停"
-        } else {
-            return "未开始"
+    private var progressColor: Color {
+        if timer.isActive {
+            return AppColors.primary
+        } else if timer.isPaused {
+            return AppColors.warning
         }
+        return AppColors.divider
     }
-}
 
-// MARK: - Context Menu
-
-@available(macOS 14.0, *)
-struct TimerContextMenu: View {
-    @EnvironmentObject var timerManager: TimerManager
-    let timer: CountdownTimer
-    let onDelete: () -> Void
-
-    var body: some View {
-        Button(action: { timerManager.startTimer(timer) }) {
-            Label("开始", systemImage: "play.fill")
+    private var borderColor: Color {
+        if timer.isActive {
+            return isHovered ? AppColors.primary.opacity(0.4) : AppColors.primary.opacity(0.2)
+        } else if timer.isPaused {
+            return isHovered ? AppColors.warning.opacity(0.4) : AppColors.warning.opacity(0.2)
         }
-
-        Button(action: { timerManager.resetTimer(timer) }) {
-            Label("重置", systemImage: "arrow.counterclockwise")
-        }
-
-        Divider()
-
-        Button(role: .destructive, action: { onDelete() }) {
-            Label("删除", systemImage: "trash")
-        }
+        return isHovered ? AppColors.divider : Color.clear
     }
 }

@@ -50,11 +50,18 @@ final class MenuBarManager: NSObject, ObservableObject {
         button.action = #selector(handleClick)
         button.target = self
 
+        // 一次性创建 popover 及其内容，避免每次点击都创建新实例
+        let contentView = MenuBarPopoverView()
+            .environmentObject(timerManager!)
+
         let popover = NSPopover()
         popover.contentSize = NSSize(width: 300, height: 400)
         popover.behavior = .transient
         popover.animates = false
+        popover.contentViewController = NSHostingController(rootView: contentView)
         self.popover = popover
+        
+        Self.logger.debug("Menu bar and popover initialized")
     }
 
     private func setupObservers() {
@@ -105,13 +112,13 @@ final class MenuBarManager: NSObject, ObservableObject {
             button.image?.isTemplate = true
             currentTimeString = ""
         } else if activeCount == 1, let timer = activeTimers.first {
-            let timeString = timerManager.formatTime(timer.remainingTime)
+            let timeString = formatTimeForMenuBar(timer.remainingTime)
             button.attributedTitle = createAttributedTimeString(timeString)
             button.image = nil
             currentTimeString = timeString
         } else {
             if let firstTimer = activeTimers.first {
-                let timeString = timerManager.formatTime(firstTimer.remainingTime)
+                let timeString = formatTimeForMenuBar(firstTimer.remainingTime)
                 let displayString = "\(timeString) | \(activeCount)"
                 button.attributedTitle = createAttributedTimeString(displayString)
                 button.image = nil
@@ -120,6 +127,22 @@ final class MenuBarManager: NSObject, ObservableObject {
                 button.title = " \(activeCount)"
                 button.image = nil
             }
+        }
+    }
+    
+    /// 菜单栏专用时间格式化，使用紧凑格式
+    private func formatTimeForMenuBar(_ timeInterval: TimeInterval) -> String {
+        let totalSeconds = Int(max(0, timeInterval))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        
+        if hours > 0 {
+            // 超过1小时使用紧凑格式：1:23:45
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            // 1小时内使用标准格式：23:45
+            return String(format: "%02d:%02d", minutes, seconds)
         }
     }
 
@@ -151,10 +174,6 @@ final class MenuBarManager: NSObject, ObservableObject {
             popover.performClose(nil)
             isMenuOpen = false
         } else {
-            let contentView = MenuBarPopoverView()
-                .environmentObject(timerManager!)
-
-            popover.contentViewController = NSHostingController(rootView: contentView)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             isMenuOpen = true
         }

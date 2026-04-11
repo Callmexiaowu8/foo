@@ -16,7 +16,8 @@ struct AddTimerView: View {
     @State private var hasEndDate = false
     @State private var endDate = Date().addingTimeInterval(86400 * 30)
     @State private var soundEnabled = true
-    @State private var showFullscreenAlert = true
+    @State private var reminderType: ReminderType = .fullscreen
+    @State private var autoDismissSeconds: Int = 15
     @State private var hasTimeRange = false
     @State private var startHour = 9
     @State private var startMinute = 0
@@ -40,17 +41,23 @@ struct AddTimerView: View {
         ZStack {
             AppColors.background
                 .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 headerBar
-                
+
                 Divider()
                     .background(AppColors.divider)
-                
+
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: AppSpacing.lg) {
                         basicInfoCard
                         durationCard
+                        
+                        // 时长验证提示
+                        if !isDurationValid {
+                            validationWarning
+                        }
+                        
                         repeatCard
                         timeRangeCard
                         optionsCard
@@ -61,6 +68,34 @@ struct AddTimerView: View {
             }
         }
         .frame(width: 480, height: 720)
+    }
+    
+    private var isDurationValid: Bool {
+        totalMinutes > 0
+    }
+    
+    private var validationWarning: some View {
+        HStack(spacing: AppSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(AppColors.warning)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("时长必须大于0")
+                    .font(AppFonts.caption)
+                    .foregroundColor(AppColors.warning)
+                    .fontWeight(.medium)
+                
+                Text("请调整小时或分钟的值")
+                    .font(.system(size: 11))
+                    .foregroundColor(AppColors.textSecondary)
+            }
+        }
+        .padding(AppSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: AppCornerRadius.md)
+                .fill(AppColors.warning.opacity(0.1))
+        )
+        .transition(.opacity.combined(with: .scale))
     }
     
     private var headerBar: some View {
@@ -262,7 +297,7 @@ struct AddTimerView: View {
             Label("提醒选项", systemImage: "bell.badge")
                 .font(AppFonts.headline)
                 .foregroundColor(AppColors.textPrimary)
-            
+
             VStack(spacing: 0) {
                 ToggleRow(
                     icon: "speaker.wave.2.fill",
@@ -270,16 +305,21 @@ struct AddTimerView: View {
                     subtitle: "倒计时结束时播放提示音",
                     isOn: $soundEnabled
                 )
-                
+
                 Divider()
                     .padding(.leading, 44)
-                
-                ToggleRow(
-                    icon: "rectangle.inset.filled",
-                    title: "全屏提醒",
-                    subtitle: "以全屏方式显示提醒",
-                    isOn: $showFullscreenAlert
-                )
+
+                ReminderTypeSelector(selectedType: $reminderType)
+
+                if reminderType == .fullscreen {
+                    Divider()
+                        .padding(.leading, 44)
+
+                    AutoDismissSelector(
+                        seconds: $autoDismissSeconds,
+                        label: "自动消失时间"
+                    )
+                }
             }
         }
         .cardStyle()
@@ -362,9 +402,9 @@ struct AddTimerView: View {
             repeatFrequency: finalRepeatFrequency,
             endDate: finalEndDate,
             soundEnabled: soundEnabled,
-            showFullscreenAlert: showFullscreenAlert
+            reminderType: reminderType
         )
-        
+
         timer.reminderStartHour = startHour
         timer.reminderStartMinute = startMinute
         timer.reminderEndHour = endHour
@@ -903,13 +943,14 @@ struct EditTimerView: View {
     @State private var hasEndDate: Bool
     @State private var endDate: Date
     @State private var soundEnabled: Bool
-    @State private var showFullscreenAlert: Bool
+    @State private var reminderType: ReminderType
+    @State private var autoDismissSeconds: Int
     @State private var hasTimeRange: Bool
     @State private var startHour: Int
     @State private var startMinute: Int
     @State private var endHour: Int
     @State private var endMinute: Int
-    
+
     init(timer: CountdownTimer) {
         self.timer = timer
         _title = State(initialValue: timer.title)
@@ -923,7 +964,8 @@ struct EditTimerView: View {
         _hasEndDate = State(initialValue: timer.endDate != nil)
         _endDate = State(initialValue: timer.endDate ?? Date().addingTimeInterval(86400 * 30))
         _soundEnabled = State(initialValue: timer.soundEnabled)
-        _showFullscreenAlert = State(initialValue: timer.showFullscreenAlert)
+        _reminderType = State(initialValue: timer.reminderType)
+        _autoDismissSeconds = State(initialValue: timer.autoDismissSeconds)
         _hasTimeRange = State(initialValue: timer.hasTimeRange)
         _startHour = State(initialValue: timer.reminderStartHour)
         _startMinute = State(initialValue: timer.reminderStartMinute)
@@ -1165,21 +1207,16 @@ struct EditTimerView: View {
                     subtitle: "倒计时结束时播放提示音",
                     isOn: $soundEnabled
                 )
-                
+
                 Divider()
                     .padding(.leading, 44)
-                
-                ToggleRow(
-                    icon: "rectangle.inset.filled",
-                    title: "全屏提醒",
-                    subtitle: "以全屏方式显示提醒",
-                    isOn: $showFullscreenAlert
-                )
+
+                ReminderTypeSelector(selectedType: $reminderType)
             }
         }
         .cardStyle()
     }
-    
+
     private var deleteButton: some View {
         Button(action: { deleteTimer() }) {
             HStack {
@@ -1217,7 +1254,8 @@ struct EditTimerView: View {
         timer.repeatFrequency = finalRepeatFrequency
         timer.endDate = (isRepeatEnabled && repeatFrequency != .once && hasEndDate) ? endDate : nil
         timer.soundEnabled = soundEnabled
-        timer.showFullscreenAlert = showFullscreenAlert
+        timer.reminderType = reminderType
+        timer.autoDismissSeconds = autoDismissSeconds
         timer.reminderStartHour = startHour
         timer.reminderStartMinute = startMinute
         timer.reminderEndHour = endHour
