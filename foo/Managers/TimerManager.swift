@@ -248,11 +248,13 @@ class TimerManager: ObservableObject, TimerManaging {
         if completedTimer?.id == timer.id {
             completedTimer = nil
         }
+        startTimer(timer)
         updateActiveTimers()
         markDirty()
     }
 
     func skipTimer(_ timer: CountdownTimer) {
+        timer.remainingTime = 0
         completeTimer(timer)
     }
 
@@ -274,6 +276,8 @@ class TimerManager: ObservableObject, TimerManaging {
             return
         }
         
+        // 停止计时器，但保持 remainingTime = 0
+        // 重要：此时不重置、不开始新周期，让倒计时时间与提醒时间完全独立
         timer.stop()
         completedTimerIds.insert(timer.id)
         completedTimer = timer
@@ -292,46 +296,29 @@ class TimerManager: ObservableObject, TimerManaging {
         }
 
         sendNotification(for: timer)
-        handleRepeat(for: timer)
+        // 注意：不在此处调用 handleRepeat，而是在 dismissAlert 中处理
+        // 这样可以确保提醒时间不被计入倒计时
         updateActiveTimers()
         markDirty()
     }
 
     // MARK: - Repeat Handling
     private func handleRepeat(for timer: CountdownTimer) {
-        guard timer.repeatFrequency != .once else { return }
-
         if let endDate = timer.endDate, Date() > endDate {
             Self.logger.info("Timer repeat ended (past end date): \(timer.title)")
             return
         }
 
-        let nextTimer = CountdownTimer(
-            title: timer.title,
-            description: timer.timerDescription,
-            duration: timer.duration,
-            repeatFrequency: timer.repeatFrequency,
-            endDate: timer.endDate,
-            soundEnabled: timer.soundEnabled,
-            reminderType: timer.reminderType
-        )
-        
-        // 复制时间段设置
-        nextTimer.reminderStartHour = timer.reminderStartHour
-        nextTimer.reminderStartMinute = timer.reminderStartMinute
-        nextTimer.reminderEndHour = timer.reminderEndHour
-        nextTimer.reminderEndMinute = timer.reminderEndMinute
-        nextTimer.hasTimeRange = timer.hasTimeRange
-        nextTimer.autoDismissSeconds = timer.autoDismissSeconds
+        // 重置计时器实例而非创建新实例
+        timer.reset()
+        completedTimerIds.remove(timer.id)
 
-        addTimer(nextTimer)
-        
-        // 自动开始新计时器（如果在时间范围内）
-        if nextTimer.isWithinTimeRange() {
-            startTimer(nextTimer)
-            Self.logger.info("Auto-started repeat timer: \(nextTimer.title)")
+        // 如果在时间范围内则自动开始
+        if timer.isWithinTimeRange() {
+            startTimer(timer)
+            Self.logger.info("Timer restarted: \(timer.title)")
         } else {
-            Self.logger.info("Repeat timer created but not started (outside time range): \(nextTimer.title)")
+            Self.logger.info("Timer reset but not started (outside time range): \(timer.title)")
         }
     }
 
@@ -358,7 +345,14 @@ class TimerManager: ObservableObject, TimerManaging {
         FullscreenAlertManager.shared.dismissAlert()
         BannerAlertManager.shared.dismissAllBanners()
         isFullscreenAlertPresented = false
-        completedTimer = nil
+        
+        // 在提醒关闭后才开始新的倒计时周期
+        // 这确保了提醒时间（如15秒全屏提醒）不会被计入倒计时
+        if let completedTimer = completedTimer {
+            handleRepeat(for: completedTimer)
+        }
+        
+        self.completedTimer = nil
     }
 
     // MARK: - Notifications
@@ -532,12 +526,19 @@ class TimerManager: ObservableObject, TimerManaging {
             repeatFrequency: timer.repeatFrequency,
             endDate: timer.endDate,
             soundEnabled: timer.soundEnabled,
-            reminderType: timer.reminderType
+            reminderType: timer.reminderType,
+            autoDismissSeconds: timer.autoDismissSeconds,
+            icon: timer.icon
         )
         cloned.remainingTime = timer.remainingTime
         cloned.isActive = timer.isActive
         cloned.isPaused = timer.isPaused
         cloned.lastStartedAt = timer.lastStartedAt
+        cloned.reminderStartHour = timer.reminderStartHour
+        cloned.reminderStartMinute = timer.reminderStartMinute
+        cloned.reminderEndHour = timer.reminderEndHour
+        cloned.reminderEndMinute = timer.reminderEndMinute
+        cloned.hasTimeRange = timer.hasTimeRange
 
         return cloned
     }

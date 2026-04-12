@@ -11,30 +11,17 @@ struct AddTimerView: View {
     @State private var minutes = 25
     @State private var hoursText = "0"
     @State private var minutesText = "25"
-    @State private var isRepeatEnabled = false
-    @State private var repeatFrequency: RepeatFrequency = .once
-    @State private var hasEndDate = false
-    @State private var endDate = Date().addingTimeInterval(86400 * 30)
     @State private var soundEnabled = true
     @State private var reminderType: ReminderType = .fullscreen
     @State private var autoDismissSeconds: Int = 15
-    @State private var hasTimeRange = false
-    @State private var startHour = 9
-    @State private var startMinute = 0
-    @State private var endHour = 18
-    @State private var endMinute = 0
+    @State private var selectedIcon: String? = nil
     
     private var totalMinutes: Int {
         hours * 60 + minutes
     }
     
     private var isValid: Bool {
-        !title.isEmpty && totalMinutes > 0 && isTimeRangeValid
-    }
-    
-    private var isTimeRangeValid: Bool {
-        if !hasTimeRange { return true }
-        return (startHour * 60 + startMinute) < (endHour * 60 + endMinute)
+        !title.isEmpty && totalMinutes > 0
     }
     
     var body: some View {
@@ -52,22 +39,17 @@ struct AddTimerView: View {
                     VStack(spacing: AppSpacing.lg) {
                         basicInfoCard
                         durationCard
+                        optionsCard
                         
-                        // 时长验证提示
                         if !isDurationValid {
                             validationWarning
                         }
-                        
-                        repeatCard
-                        timeRangeCard
-                        optionsCard
-                        previewCard
                     }
                     .padding(AppSpacing.lg)
                 }
             }
         }
-        .frame(width: 480, height: 720)
+        .frame(width: 480, height: 600)
     }
     
     private var isDurationValid: Bool {
@@ -127,17 +109,22 @@ struct AddTimerView: View {
             Label("基本信息", systemImage: "textformat")
                 .font(AppFonts.headline)
                 .foregroundColor(AppColors.textPrimary)
-            
-            VStack(spacing: AppSpacing.md) {
-                FormField(label: "标题") {
-                    TextField("例如：喝水、休息", text: $title)
-                        .font(AppFonts.body)
+
+            HStack(alignment: .center, spacing: AppSpacing.lg) {
+                IconSelector(selectedIcon: $selectedIcon)
+
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    FormField(label: "标题") {
+                        TextField("例如：喝水、休息", text: $title)
+                            .font(AppFonts.body)
+                    }
+
+                    FormField(label: "描述（可选）") {
+                        TextField("添加详细说明...", text: $description)
+                            .font(AppFonts.body)
+                    }
                 }
-                
-                FormField(label: "描述（可选）") {
-                    TextField("添加详细说明...", text: $description)
-                        .font(AppFonts.body)
-                }
+                .frame(maxWidth: .infinity)
             }
         }
         .cardStyle()
@@ -166,126 +153,6 @@ struct AddTimerView: View {
                         range: 0..<60
                     )
                 }
-                
-                totalDurationDisplay
-            }
-        }
-        .cardStyle()
-    }
-    
-    private var totalDurationDisplay: some View {
-        HStack {
-            Text("总时长")
-                .font(AppFonts.subheadline)
-                .foregroundColor(AppColors.textSecondary)
-            
-            Spacer()
-            
-            Text(formattedTotalTime)
-                .font(AppFonts.title3)
-                .foregroundColor(AppColors.primary)
-        }
-        .padding(.horizontal, AppSpacing.md)
-        .padding(.vertical, AppSpacing.sm)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.md)
-                .fill(AppColors.primary.opacity(0.1))
-        )
-    }
-    
-    // MARK: - 重复设置卡片 - Toggle Switch
-    private var repeatCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            HStack {
-                Label("重复设置", systemImage: "repeat")
-                    .font(AppFonts.headline)
-                    .foregroundColor(AppColors.textPrimary)
-
-                Spacer()
-
-                Toggle("", isOn: $isRepeatEnabled)
-                    .toggleStyle(SwitchToggleStyle(tint: AppColors.primary))
-                    .labelsHidden()
-            }
-
-            if isRepeatEnabled {
-                VStack(spacing: AppSpacing.sm) {
-                    CompactFrequencySelector(selection: $repeatFrequency)
-
-                    if repeatFrequency != .once {
-                        endDateSection
-                    }
-                }
-                .padding(.top, AppSpacing.xs)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .cardStyle()
-    }
-    
-    private var endDateSection: some View {
-        VStack(spacing: AppSpacing.sm) {
-            Toggle("设置结束日期", isOn: $hasEndDate)
-                .font(AppFonts.subheadline)
-                .toggleStyle(SwitchToggleStyle(tint: AppColors.primary))
-            
-            if hasEndDate {
-                CustomCalendarView(selectedDate: $endDate)
-                    .padding(.top, AppSpacing.xs)
-            }
-        }
-    }
-    
-    // MARK: - 时间段设置卡片
-    private var timeRangeCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            HStack {
-                Label("提醒时间段", systemImage: "clock.badge.checkmark")
-                    .font(AppFonts.headline)
-                    .foregroundColor(AppColors.textPrimary)
-                
-                Spacer()
-                
-                Toggle("", isOn: $hasTimeRange)
-                    .toggleStyle(SwitchToggleStyle(tint: AppColors.primary))
-                    .labelsHidden()
-                    .scaleEffect(0.8)
-            }
-            
-            if hasTimeRange {
-                VStack(spacing: AppSpacing.md) {
-                    Text("在以下时间段内才会触发提醒")
-                        .font(AppFonts.caption)
-                        .foregroundColor(AppColors.textSecondary)
-                    
-                    HStack(spacing: AppSpacing.lg) {
-                        TimeRangePicker(
-                            title: "开始",
-                            hour: $startHour,
-                            minute: $startMinute
-                        )
-                        
-                        Image(systemName: "arrow.right")
-                            .foregroundColor(AppColors.textTertiary)
-                        
-                        TimeRangePicker(
-                            title: "结束",
-                            hour: $endHour,
-                            minute: $endMinute
-                        )
-                    }
-                    
-                    if !isTimeRangeValid {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(AppColors.error)
-                            Text("结束时间必须晚于开始时间")
-                                .font(AppFonts.caption)
-                                .foregroundColor(AppColors.error)
-                        }
-                    }
-                }
-                .padding(.top, AppSpacing.xs)
             }
         }
         .cardStyle()
@@ -325,57 +192,6 @@ struct AddTimerView: View {
         .cardStyle()
     }
     
-    // MARK: - 预览卡片
-    private var previewCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            Label("预览", systemImage: "eye")
-                .font(AppFonts.headline)
-                .foregroundColor(AppColors.textPrimary)
-            
-            HStack(spacing: AppSpacing.md) {
-                ZStack {
-                    Circle()
-                        .fill(AppColors.primary.opacity(0.15))
-                        .frame(width: 56, height: 56)
-                    
-                    Image(systemName: "timer")
-                        .font(.system(size: 24))
-                        .foregroundColor(AppColors.primary)
-                }
-                
-                VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    Text(title.isEmpty ? "未命名" : title)
-                        .font(AppFonts.callout.weight(.semibold))
-                        .foregroundColor(title.isEmpty ? AppColors.textTertiary : AppColors.textPrimary)
-                    
-                    Text(formattedTotalTime)
-                        .font(AppFonts.subheadline)
-                        .foregroundColor(AppColors.textSecondary)
-                    
-                    if hasTimeRange && isTimeRangeValid {
-                        Text(formattedTimeRange)
-                            .font(AppFonts.caption)
-                            .foregroundColor(AppColors.primary)
-                    }
-                }
-                
-                Spacer()
-                
-                if !title.isEmpty && isValid {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(AppColors.success)
-                        .font(.system(size: 24))
-                }
-            }
-            .padding(AppSpacing.md)
-            .background(
-                RoundedRectangle(cornerRadius: AppCornerRadius.lg)
-                    .fill(AppColors.background)
-            )
-        }
-        .cardStyle()
-    }
-    
     private var formattedTotalTime: String {
         if hours > 0 && minutes > 0 {
             return "\(hours)小时\(minutes)分钟"
@@ -386,30 +202,19 @@ struct AddTimerView: View {
         }
     }
     
-    private var formattedTimeRange: String {
-        String(format: "%02d:%02d - %02d:%02d", startHour, startMinute, endHour, endMinute)
-    }
-    
     private func createTimer() {
         let duration = TimeInterval(totalMinutes * 60)
-        let finalEndDate = (isRepeatEnabled && repeatFrequency != .once && hasEndDate) ? endDate : nil
-        let finalRepeatFrequency: RepeatFrequency = isRepeatEnabled ? repeatFrequency : .once
 
         let timer = CountdownTimer(
             title: title,
             description: description,
             duration: duration,
-            repeatFrequency: finalRepeatFrequency,
-            endDate: finalEndDate,
+            repeatFrequency: .daily,
             soundEnabled: soundEnabled,
-            reminderType: reminderType
+            reminderType: reminderType,
+            autoDismissSeconds: autoDismissSeconds,
+            icon: selectedIcon
         )
-
-        timer.reminderStartHour = startHour
-        timer.reminderStartMinute = startMinute
-        timer.reminderEndHour = endHour
-        timer.reminderEndMinute = endMinute
-        timer.hasTimeRange = hasTimeRange
 
         timerManager.addTimer(timer)
         dismiss()
@@ -581,72 +386,6 @@ struct DualTimeInput: View {
             let clamped = max(range.lowerBound, min(range.upperBound - 1, num))
             value = clamped
             textValue = "\(clamped)"
-        }
-    }
-}
-
-// MARK: - Compact Frequency Selector
-
-@available(macOS 14.0, *)
-struct CompactFrequencySelector: View {
-    @Binding var selection: RepeatFrequency
-    
-    private let columns = [
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible())
-    ]
-    
-    var body: some View {
-        LazyVGrid(columns: columns, spacing: AppSpacing.sm) {
-            ForEach(RepeatFrequency.selectableCases, id: \.self) { frequency in
-                CompactFrequencyButton(
-                    frequency: frequency,
-                    isSelected: selection == frequency
-                ) {
-                    withAnimation(AppAnimations.spring) {
-                        selection = frequency
-                    }
-                }
-            }
-        }
-    }
-}
-
-@available(macOS 14.0, *)
-struct CompactFrequencyButton: View {
-    let frequency: RepeatFrequency
-    let isSelected: Bool
-    let action: () -> Void
-    @State private var isHovering = false
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: AppSpacing.xs) {
-                Image(systemName: frequency.iconName)
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? AppColors.primary : AppColors.textSecondary)
-                
-                Text(frequency.description)
-                    .font(AppFonts.caption)
-                    .foregroundColor(isSelected ? AppColors.primary : AppColors.textSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, AppSpacing.sm)
-            .background(
-                RoundedRectangle(cornerRadius: AppCornerRadius.md)
-                    .fill(isSelected ? AppColors.primary.opacity(0.1) : AppColors.background)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppCornerRadius.md)
-                            .stroke(isSelected ? AppColors.primary.opacity(0.3) : (isHovering ? AppColors.divider : Color.clear), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .onHover { hovering in
-            withAnimation(AppAnimations.fast) {
-                isHovering = hovering
-            }
         }
     }
 }
@@ -923,6 +662,41 @@ struct ToggleRow: View {
     }
 }
 
+// MARK: - Time Range Quick Button
+
+@available(macOS 14.0, *)
+struct TimeRangeQuickButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    @State private var isHovering = false
+    
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(AppFonts.subheadline.weight(isSelected ? .semibold : .medium))
+                .foregroundColor(isSelected ? .white : AppColors.textSecondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: AppCornerRadius.sm)
+                        .fill(isSelected ? AppColors.primary : (isHovering ? Color.secondary.opacity(0.1) : Color.clear))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppCornerRadius.sm)
+                        .stroke(isSelected ? AppColors.primary : Color.secondary.opacity(0.2), lineWidth: 1)
+                )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
+    }
+}
+
 // MARK: - Edit Timer View
 
 @available(macOS 14.0, *)
@@ -938,18 +712,14 @@ struct EditTimerView: View {
     @State private var minutes: Int
     @State private var hoursText: String
     @State private var minutesText: String
-    @State private var isRepeatEnabled: Bool
-    @State private var repeatFrequency: RepeatFrequency
-    @State private var hasEndDate: Bool
-    @State private var endDate: Date
     @State private var soundEnabled: Bool
     @State private var reminderType: ReminderType
     @State private var autoDismissSeconds: Int
-    @State private var hasTimeRange: Bool
-    @State private var startHour: Int
-    @State private var startMinute: Int
-    @State private var endHour: Int
-    @State private var endMinute: Int
+    @State private var showingDiscardAlert = false
+    @State private var showingDeleteAlert = false
+    @State private var selectedIcon: String?
+
+    private var originalTimerBackup: CountdownTimer
 
     init(timer: CountdownTimer) {
         self.timer = timer
@@ -959,31 +729,36 @@ struct EditTimerView: View {
         _minutes = State(initialValue: (Int(timer.duration) % 3600) / 60)
         _hoursText = State(initialValue: "\(Int(timer.duration) / 3600)")
         _minutesText = State(initialValue: "\((Int(timer.duration) % 3600) / 60)")
-        _isRepeatEnabled = State(initialValue: timer.repeatFrequency != .once)
-        _repeatFrequency = State(initialValue: timer.repeatFrequency)
-        _hasEndDate = State(initialValue: timer.endDate != nil)
-        _endDate = State(initialValue: timer.endDate ?? Date().addingTimeInterval(86400 * 30))
         _soundEnabled = State(initialValue: timer.soundEnabled)
         _reminderType = State(initialValue: timer.reminderType)
         _autoDismissSeconds = State(initialValue: timer.autoDismissSeconds)
-        _hasTimeRange = State(initialValue: timer.hasTimeRange)
-        _startHour = State(initialValue: timer.reminderStartHour)
-        _startMinute = State(initialValue: timer.reminderStartMinute)
-        _endHour = State(initialValue: timer.reminderEndHour)
-        _endMinute = State(initialValue: timer.reminderEndMinute)
+        _selectedIcon = State(initialValue: timer.icon)
+
+        self.originalTimerBackup = CountdownTimer(
+            title: timer.title,
+            description: timer.timerDescription,
+            duration: timer.duration,
+            repeatFrequency: .once,
+            soundEnabled: timer.soundEnabled,
+            reminderType: timer.reminderType,
+            autoDismissSeconds: timer.autoDismissSeconds,
+            icon: timer.icon
+        )
     }
     
     private var totalMinutes: Int {
         hours * 60 + minutes
     }
     
-    private var isValid: Bool {
-        !title.isEmpty && totalMinutes > 0 && isTimeRangeValid
+    private var hasUnsavedChanges: Bool {
+        title != originalTimerBackup.title ||
+        description != originalTimerBackup.timerDescription ||
+        hours != Int(originalTimerBackup.duration) / 3600 ||
+        minutes != (Int(originalTimerBackup.duration) % 3600) / 60
     }
     
-    private var isTimeRangeValid: Bool {
-        if !hasTimeRange { return true }
-        return (startHour * 60 + startMinute) < (endHour * 60 + endMinute)
+    private var isValid: Bool {
+        !title.isEmpty && totalMinutes > 0
     }
     
     var body: some View {
@@ -1001,35 +776,63 @@ struct EditTimerView: View {
                     VStack(spacing: AppSpacing.lg) {
                         basicInfoCard
                         durationCard
-                        repeatCard
-                        timeRangeCard
                         optionsCard
-                        deleteButton
                     }
                     .padding(AppSpacing.lg)
                 }
             }
         }
-        .frame(width: 480, height: 780)
+        .frame(width: 480, height: 720)
+        .alert("放弃修改？", isPresented: $showingDiscardAlert) {
+            Button("取消", role: .cancel) { }
+            Button("放弃", role: .destructive) {
+                discardChanges()
+            }
+        } message: {
+            Text("您有未保存的修改。确定要放弃所有更改吗？")
+        }
     }
     
     private var headerBar: some View {
         HStack {
-            Button("取消") { dismiss() }
-                .foregroundColor(AppColors.textSecondary)
-            
+            Button("取消") {
+                if hasUnsavedChanges {
+                    showingDiscardAlert = true
+                } else {
+                    dismiss()
+                }
+            }
+            .foregroundColor(AppColors.textSecondary)
+
             Spacer()
-            
+
             Text("编辑倒计时")
                 .font(AppFonts.headline.weight(.semibold))
                 .foregroundColor(AppColors.textPrimary)
-            
+
             Spacer()
-            
-            Button("保存") { updateTimer() }
+
+            HStack(spacing: AppSpacing.md) {
+                Button("删除") {
+                    showingDeleteAlert = true
+                }
+                .foregroundColor(AppColors.error)
+                .alert("确认删除？", isPresented: $showingDeleteAlert) {
+                    Button("取消", role: .cancel) { }
+                    Button("删除", role: .destructive) {
+                        deleteTimer()
+                    }
+                } message: {
+                    Text("确定要删除 \"\(title)\" 吗？此操作无法撤销。")
+                }
+
+                Button("保存") {
+                    updateTimer()
+                }
                 .disabled(!isValid)
                 .font(AppFonts.callout.weight(.semibold))
                 .foregroundColor(isValid ? AppColors.primary : AppColors.textTertiary)
+            }
         }
         .padding(.horizontal, AppSpacing.lg)
         .padding(.vertical, AppSpacing.md)
@@ -1042,16 +845,21 @@ struct EditTimerView: View {
                 .font(AppFonts.headline)
                 .foregroundColor(AppColors.textPrimary)
             
-            VStack(spacing: AppSpacing.md) {
-                FormField(label: "标题") {
-                    TextField("例如：喝水、休息", text: $title)
-                        .font(AppFonts.body)
-                }
+            HStack(alignment: .center, spacing: AppSpacing.lg) {
+                IconSelector(selectedIcon: $selectedIcon)
                 
-                FormField(label: "描述（可选）") {
-                    TextField("添加详细说明...", text: $description)
-                        .font(AppFonts.body)
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    FormField(label: "标题") {
+                        TextField("例如：喝水、休息", text: $title)
+                            .font(AppFonts.body)
+                    }
+                    
+                    FormField(label: "描述（可选）") {
+                        TextField("添加详细说明...", text: $description)
+                            .font(AppFonts.body)
+                    }
                 }
+                .frame(maxWidth: .infinity)
             }
         }
         .cardStyle()
@@ -1080,115 +888,6 @@ struct EditTimerView: View {
                     )
                 }
                 
-                HStack {
-                    Text("总时长")
-                        .font(AppFonts.subheadline)
-                        .foregroundColor(AppColors.textSecondary)
-                    
-                    Spacer()
-                    
-                    Text(formattedTotalTime)
-                        .font(AppFonts.title3)
-                        .foregroundColor(AppColors.primary)
-                }
-                .padding(.horizontal, AppSpacing.md)
-                .padding(.vertical, AppSpacing.sm)
-                .background(
-                    RoundedRectangle(cornerRadius: AppCornerRadius.md)
-                        .fill(AppColors.primary.opacity(0.1))
-                )
-            }
-        }
-        .cardStyle()
-    }
-    
-    private var repeatCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            HStack {
-                Label("重复设置", systemImage: "repeat")
-                    .font(AppFonts.headline)
-                    .foregroundColor(AppColors.textPrimary)
-
-                Spacer()
-
-                Toggle("", isOn: $isRepeatEnabled)
-                    .toggleStyle(SwitchToggleStyle(tint: AppColors.primary))
-                    .labelsHidden()
-            }
-
-            if isRepeatEnabled {
-                VStack(spacing: AppSpacing.sm) {
-                    CompactFrequencySelector(selection: $repeatFrequency)
-
-                    if repeatFrequency != .once {
-                        VStack(spacing: AppSpacing.sm) {
-                            Toggle("设置结束日期", isOn: $hasEndDate)
-                                .font(AppFonts.subheadline)
-                                .toggleStyle(SwitchToggleStyle(tint: AppColors.primary))
-
-                            if hasEndDate {
-                                CustomCalendarView(selectedDate: $endDate)
-                                    .padding(.top, AppSpacing.xs)
-                            }
-                        }
-                    }
-                }
-                .padding(.top, AppSpacing.xs)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .cardStyle()
-    }
-    
-    private var timeRangeCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            HStack {
-                Label("提醒时间段", systemImage: "clock.badge.checkmark")
-                    .font(AppFonts.headline)
-                    .foregroundColor(AppColors.textPrimary)
-                
-                Spacer()
-                
-                Toggle("", isOn: $hasTimeRange)
-                    .toggleStyle(SwitchToggleStyle(tint: AppColors.primary))
-                    .labelsHidden()
-                    .scaleEffect(0.8)
-            }
-            
-            if hasTimeRange {
-                VStack(spacing: AppSpacing.md) {
-                    Text("在以下时间段内才会触发提醒")
-                        .font(AppFonts.caption)
-                        .foregroundColor(AppColors.textSecondary)
-                    
-                    HStack(spacing: AppSpacing.lg) {
-                        TimeRangePicker(
-                            title: "开始",
-                            hour: $startHour,
-                            minute: $startMinute
-                        )
-                        
-                        Image(systemName: "arrow.right")
-                            .foregroundColor(AppColors.textTertiary)
-                        
-                        TimeRangePicker(
-                            title: "结束",
-                            hour: $endHour,
-                            minute: $endMinute
-                        )
-                    }
-                    
-                    if !isTimeRangeValid {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(AppColors.error)
-                            Text("结束时间必须晚于开始时间")
-                                .font(AppFonts.caption)
-                                .foregroundColor(AppColors.error)
-                        }
-                    }
-                }
-                .padding(.top, AppSpacing.xs)
             }
         }
         .cardStyle()
@@ -1212,11 +911,21 @@ struct EditTimerView: View {
                     .padding(.leading, 44)
 
                 ReminderTypeSelector(selectedType: $reminderType)
+
+                if reminderType == .fullscreen {
+                    Divider()
+                        .padding(.leading, 44)
+
+                    AutoDismissSelector(
+                        seconds: $autoDismissSeconds,
+                        label: "自动消失时间"
+                    )
+                }
             }
         }
         .cardStyle()
     }
-
+    
     private var deleteButton: some View {
         Button(action: { deleteTimer() }) {
             HStack {
@@ -1250,17 +959,12 @@ struct EditTimerView: View {
         timer.title = title
         timer.timerDescription = description
         timer.duration = TimeInterval(totalMinutes * 60)
-        let finalRepeatFrequency: RepeatFrequency = isRepeatEnabled ? repeatFrequency : .once
-        timer.repeatFrequency = finalRepeatFrequency
-        timer.endDate = (isRepeatEnabled && repeatFrequency != .once && hasEndDate) ? endDate : nil
+        timer.repeatFrequency = .once
+        timer.endDate = nil
         timer.soundEnabled = soundEnabled
         timer.reminderType = reminderType
         timer.autoDismissSeconds = autoDismissSeconds
-        timer.reminderStartHour = startHour
-        timer.reminderStartMinute = startMinute
-        timer.reminderEndHour = endHour
-        timer.reminderEndMinute = endMinute
-        timer.hasTimeRange = hasTimeRange
+        timer.icon = selectedIcon
 
         if !timer.isActive {
             timer.remainingTime = timer.duration
@@ -1272,6 +976,10 @@ struct EditTimerView: View {
     
     private func deleteTimer() {
         timerManager.deleteTimer(timer)
+        dismiss()
+    }
+    
+    private func discardChanges() {
         dismiss()
     }
 }

@@ -23,7 +23,7 @@ struct FullscreenAlertView: View {
             }
 
             // 播放系统声音
-            NSSound(named: "Glass")?.play()
+            NSSound(named: "Breeze")?.play()
         }
     }
 

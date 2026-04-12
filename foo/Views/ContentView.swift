@@ -11,31 +11,32 @@ struct ContentView: View {
     @State private var timerToDelete: CountdownTimer?
 
     private var sortedTimers: [CountdownTimer] {
-        timerManager.timers.sorted { timer1, timer2 in
+        let timers = timerManager.timers
+        
+        if timers.count <= 3 {
+            return timers
+        }
+        
+        return timers.sorted { timer1, timer2 in
             let t1Running = timer1.isActive && !timer1.isPaused
             let t2Running = timer2.isActive && !timer2.isPaused
             let t1Paused = timer1.isPaused
             let t2Paused = timer2.isPaused
             
-            // 优先级1: 运行中的计时器排在最前
             if t1Running && !t2Running { return true }
             if !t1Running && t2Running { return false }
             
-            // 优先级2: 都在运行中，按剩余时间升序（即将完成的在前）
             if t1Running && t2Running {
                 return timer1.remainingTime < timer2.remainingTime
             }
             
-            // 优先级3: 已暂停的计时器排在未开始之前
             if t1Paused && !t2Paused { return true }
             if !t1Paused && t2Paused { return false }
             
-            // 优先级4: 都已暂停，按剩余时间升序
             if t1Paused && t2Paused {
                 return timer1.remainingTime < timer2.remainingTime
             }
             
-            // 优先级5: 都未开始，按创建时间倒序（最新创建的在前）
             return timer1.createdAt > timer2.createdAt
         }
     }
@@ -59,11 +60,15 @@ struct ContentView: View {
         .sheet(isPresented: $showingAddTimer) {
             AddTimerView()
                 .environmentObject(timerManager)
+                .frame(width: 480, height: 600)
+                .fixedSize()
         }
         .sheet(isPresented: $showingEditTimer) {
             if let timer = selectedTimer {
                 EditTimerView(timer: timer)
                     .environmentObject(timerManager)
+                    .frame(width: 480, height: 720)
+                    .fixedSize()
             }
         }
         .alert("删除计时器", isPresented: $showingDeleteConfirmation) {
@@ -156,6 +161,10 @@ struct ContentView: View {
                             onDelete: {
                                 timerToDelete = timer
                                 showingDeleteConfirmation = true
+                            },
+                            onEdit: {
+                                selectedTimer = timer
+                                showingEditTimer = true
                             }
                         )
                         .environmentObject(timerManager)
@@ -261,9 +270,11 @@ struct UnifiedTimerRow: View {
     let onReset: () -> Void
     let onSkip: () -> Void
     let onDelete: () -> Void
+    let onEdit: () -> Void
 
     @EnvironmentObject var timerManager: TimerManager
     @State private var isPressed = false
+    @State private var showingResetConfirmation = false
 
     var body: some View {
         VStack(spacing: AppSpacing.md) {
@@ -286,13 +297,6 @@ struct UnifiedTimerRow: View {
 
                     HStack(spacing: AppSpacing.sm) {
                         Label(timer.formattedDuration, systemImage: "clock")
-                            .font(AppFonts.caption)
-                            .foregroundColor(AppColors.textSecondary)
-
-                        Text("•")
-                            .foregroundColor(AppColors.textTertiary)
-
-                        Text(timer.repeatFrequency.description)
                             .font(AppFonts.caption)
                             .foregroundColor(AppColors.textSecondary)
                     }
@@ -374,23 +378,35 @@ struct UnifiedTimerRow: View {
 
     private var controlButtons: some View {
         HStack(spacing: AppSpacing.sm) {
+            // 开始/暂停按钮
             if timer.isActive {
                 controlButton(title: "暂停", icon: "pause.fill", color: AppColors.warning, action: onPause)
-                controlButton(title: "重置", icon: "arrow.counterclockwise", color: AppColors.textSecondary, action: onReset)
             } else if timer.isPaused {
                 controlButton(title: "继续", icon: "play.fill", color: AppColors.success, action: onResume)
-                controlButton(title: "重置", icon: "arrow.counterclockwise", color: AppColors.textSecondary, action: onReset)
             } else {
                 controlButton(title: "开始", icon: "play.fill", color: AppColors.success, action: onStart)
             }
 
+            // 重置按钮
+            controlButton(title: "重置", icon: "arrow.counterclockwise", color: AppColors.textSecondary, action: {
+                showingResetConfirmation = true
+            })
+
             Spacer()
 
-            if timer.repeatFrequency != .once {
-                controlButton(title: "跳过", icon: "forward.fill", color: AppColors.textSecondary, action: onSkip)
-            }
+            // 编辑按钮
+            controlButton(title: "编辑", icon: "pencil", color: AppColors.primary, action: onEdit)
 
+            // 删除按钮
             controlButton(title: "删除", icon: "trash", color: AppColors.error, action: onDelete)
+        }
+        .alert("确认重置？", isPresented: $showingResetConfirmation) {
+            Button("取消", role: .cancel) { }
+            Button("重置", role: .destructive) {
+                onReset()
+            }
+        } message: {
+            Text("确定要将 \"\(timer.title)\" 重置为初始时间吗？")
         }
     }
 
@@ -414,21 +430,7 @@ struct UnifiedTimerRow: View {
     }
 
     private var iconName: String {
-        let lowercased = timer.title.lowercased()
-        if lowercased.contains("水") || lowercased.contains("喝") {
-            return "drop.fill"
-        } else if lowercased.contains("休息") || lowercased.contains("睡眠") {
-            return "bed.double.fill"
-        } else if lowercased.contains("工作") || lowercased.contains("专注") {
-            return "briefcase.fill"
-        } else if lowercased.contains("运动") || lowercased.contains("锻炼") || lowercased.contains("跑步") {
-            return "figure.walk"
-        } else if lowercased.contains("吃饭") || lowercased.contains("午餐") || lowercased.contains("晚餐") {
-            return "fork.knife"
-        } else if lowercased.contains("学习") || lowercased.contains("读书") {
-            return "book.fill"
-        }
-        return "timer"
+        return timer.icon ?? "timer"
     }
 
     private var iconBackgroundColor: Color {

@@ -155,8 +155,8 @@ final class MenuBarManager: NSObject, ObservableObject {
 
         let attachment = NSTextAttachment()
         let iconConfig = NSImage.SymbolConfiguration(pointSize: NSFont.systemFontSize, weight: .medium)
-        if let hourglassImage = NSImage(systemSymbolName: "hourglass", accessibilityDescription: "计时")?.withSymbolConfiguration(iconConfig) {
-            attachment.image = hourglassImage
+        if let timerImage = NSImage(systemSymbolName: "timer", accessibilityDescription: "计时")?.withSymbolConfiguration(iconConfig) {
+            attachment.image = timerImage
         }
 
         let attachmentString = NSAttributedString(attachment: attachment)

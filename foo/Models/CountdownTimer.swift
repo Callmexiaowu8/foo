@@ -79,6 +79,7 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
     @Published var reminderEndMinute: Int
     @Published var hasTimeRange: Bool
     @Published var autoDismissSeconds: Int
+    @Published var icon: String?
 
     init(
         id: UUID = UUID(),
@@ -89,7 +90,8 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         endDate: Date? = nil,
         soundEnabled: Bool = true,
         reminderType: ReminderType = .fullscreen,
-        autoDismissSeconds: Int = 15
+        autoDismissSeconds: Int = 15,
+        icon: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -110,6 +112,7 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         self.reminderEndMinute = 59
         self.hasTimeRange = false
         self.autoDismissSeconds = autoDismissSeconds
+        self.icon = icon
     }
 
     enum CodingKeys: String, CodingKey {
@@ -118,7 +121,7 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         case createdAt, lastStartedAt, soundEnabled, reminderType
         case reminderStartHour, reminderStartMinute
         case reminderEndHour, reminderEndMinute, hasTimeRange
-        case autoDismissSeconds
+        case autoDismissSeconds, icon
     }
 
     enum OldCodingKeys: String, CodingKey {
@@ -156,6 +159,7 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         reminderEndMinute = try container.decodeIfPresent(Int.self, forKey: .reminderEndMinute) ?? 59
         hasTimeRange = try container.decodeIfPresent(Bool.self, forKey: .hasTimeRange) ?? false
         autoDismissSeconds = try container.decodeIfPresent(Int.self, forKey: .autoDismissSeconds) ?? 15
+        icon = try container.decodeIfPresent(String.self, forKey: .icon)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -179,10 +183,15 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         try container.encode(reminderEndMinute, forKey: .reminderEndMinute)
         try container.encode(hasTimeRange, forKey: .hasTimeRange)
         try container.encode(autoDismissSeconds, forKey: .autoDismissSeconds)
+        try container.encodeIfPresent(icon, forKey: .icon)
     }
 
     static func == (lhs: CountdownTimer, rhs: CountdownTimer) -> Bool {
         return lhs.id == rhs.id
+    }
+
+    var displayIcon: String {
+        return icon ?? "timer"
     }
 
     var totalMinutes: Int {

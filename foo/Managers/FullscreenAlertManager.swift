@@ -26,9 +26,7 @@ final class FullscreenAlertManager: NSObject, NSWindowDelegate {
         remainingSeconds = currentDismissSeconds
         pendingCompletion = completion
 
-        DispatchQueue.main.async { [weak self] in
-            self?.createAndShowFullscreenWindow(timer: timer)
-        }
+        createAndShowFullscreenWindow(timer: timer)
     }
 
     func dismissAlert() {
@@ -49,6 +47,18 @@ final class FullscreenAlertManager: NSObject, NSWindowDelegate {
         remainingSeconds = seconds
     }
 
+    private static func playSystemSound() {
+        let soundNames = ["Breeze", "Pop", "Glass", "Mail"]
+        for name in soundNames {
+            if let sound = NSSound(named: name) {
+                sound.volume = 0.8
+                sound.play()
+                return
+            }
+        }
+        NSSound.beep()
+    }
+
     private func createAndShowFullscreenWindow(timer: CountdownTimer) {
         hideFullscreenWindow()
 
@@ -61,11 +71,15 @@ final class FullscreenAlertManager: NSObject, NSWindowDelegate {
             timerTitle: timer.title,
             timerDescription: timer.timerDescription ?? "",
             initialSeconds: currentDismissSeconds,
+            soundEnabled: timer.soundEnabled,
             onDismiss: { [weak self] in
                 self?.dismissAlert()
             },
             onSecondElapse: { [weak self] remaining in
                 self?.remainingSeconds = remaining
+            },
+            onPlaySound: {
+                FullscreenAlertManager.playSystemSound()
             }
         )
 
@@ -116,31 +130,36 @@ struct FullscreenAlertContent: View {
     let timerTitle: String
     let timerDescription: String
     let initialSeconds: Int
+    let soundEnabled: Bool
     let onDismiss: () -> Void
     var onSecondElapse: ((Int) -> Void)?
+    var onPlaySound: (() -> Void)?
 
     @State private var scale: CGFloat = 0.5
     @State private var opacity: Double = 0
     @State private var showContent = false
     @State private var remainingSeconds: Int
     @State private var ringProgress: Double = 1.0
+    @State private var backgroundOpacity: Double = 0
+    @State private var textColor: Color = .clear
 
-    init(timerTitle: String, timerDescription: String, initialSeconds: Int, onDismiss: @escaping () -> Void, onSecondElapse: ((Int) -> Void)? = nil) {
+    init(timerTitle: String, timerDescription: String, initialSeconds: Int, soundEnabled: Bool = true, onDismiss: @escaping () -> Void, onSecondElapse: ((Int) -> Void)? = nil, onPlaySound: (() -> Void)? = nil) {
         self.timerTitle = timerTitle
         self.timerDescription = timerDescription
         self.initialSeconds = initialSeconds
+        self.soundEnabled = soundEnabled
         self.onDismiss = onDismiss
         self.onSecondElapse = onSecondElapse
+        self.onPlaySound = onPlaySound
         _remainingSeconds = State(initialValue: initialSeconds)
     }
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.85)
+            Color.black
+                .opacity(backgroundOpacity)
                 .ignoresSafeArea()
-                .onTapGesture {
-                    onDismiss()
-                }
+                .animation(.easeInOut(duration: 3.0), value: backgroundOpacity)
 
             if showContent {
                 VStack(spacing: 0) {
@@ -149,8 +168,12 @@ struct FullscreenAlertContent: View {
 
                     VStack(spacing: 40) {
                         countdownRingView
+                            .foregroundColor(textColor)
+                            .animation(.easeInOut(duration: 3.0), value: textColor)
 
                         titleSection
+                            .foregroundColor(textColor)
+                            .animation(.easeInOut(duration: 3.0), value: textColor)
                     }
 
                     Spacer()
@@ -162,7 +185,7 @@ struct FullscreenAlertContent: View {
                             Text("跳过")
                                 .font(.system(size: 18, weight: .medium))
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(textColor)
                         .padding(.horizontal, 40)
                         .padding(.vertical, 18)
                         .background(
@@ -191,8 +214,16 @@ struct FullscreenAlertContent: View {
                 showContent = true
             }
 
+            withAnimation(.easeInOut(duration: 3.0)) {
+                backgroundOpacity = 1.0
+                textColor = .white
+            }
+
             startCountdownTimer()
-            NSSound(named: "Glass")?.play()
+
+            if soundEnabled {
+                onPlaySound?()
+            }
         }
     }
 
