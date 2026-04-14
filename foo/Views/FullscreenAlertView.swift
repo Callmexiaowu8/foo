@@ -21,9 +21,6 @@ struct FullscreenAlertView: View {
                 scale = 1.0
                 opacity = 1.0
             }
-
-            // 播放系统声音
-            NSSound(named: "Breeze")?.play()
         }
     }
 

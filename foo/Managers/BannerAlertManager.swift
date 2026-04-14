@@ -103,6 +103,7 @@ final class BannerAlertManager: NSObject, NSWindowDelegate {
         window.alphaValue = 0
 
         window.orderFront(nil)
+        window.makeKeyAndOrderFront(nil)
         animateBannerIn(window: window, finalFrame: bannerRect)
 
         bannerWindows[timer.id] = window

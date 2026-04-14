@@ -26,6 +26,7 @@ protocol TimerManaging: AnyObject {
     func stopTimer(_ timer: CountdownTimer)
     func resetTimer(_ timer: CountdownTimer)
     func skipTimer(_ timer: CountdownTimer)
+    func testReminder(for timer: CountdownTimer)
     func formatTime(_ timeInterval: TimeInterval) -> String
 }
 
@@ -258,6 +259,16 @@ class TimerManager: ObservableObject, TimerManaging {
         completeTimer(timer)
     }
 
+    func testReminder(for timer: CountdownTimer) {
+        guard timer.reminderType == .fullscreen else {
+            return
+        }
+
+        FullscreenAlertManager.shared.showAlert(timer: timer) { [weak self] in
+            self?.resetTimer(timer)
+        }
+    }
+
     // MARK: - State Change
     private func performStateChange(_ timer: CountdownTimer, state: TimerState) {
         state.apply(to: timer)
@@ -332,7 +343,6 @@ class TimerManager: ObservableObject, TimerManaging {
             title: "\(completedTimer.title) (延迟)",
             description: completedTimer.timerDescription,
             duration: TimeInterval(minutes * 60),
-            soundEnabled: completedTimer.soundEnabled,
             reminderType: completedTimer.reminderType
         )
 
@@ -370,7 +380,6 @@ class TimerManager: ObservableObject, TimerManaging {
         let content = UNMutableNotificationContent()
         content.title = timer.title
         content.body = timer.timerDescription.isEmpty ? "倒计时结束！" : timer.timerDescription
-        content.sound = timer.soundEnabled ? .default : nil
         content.badge = 1
 
         let request = UNNotificationRequest(
@@ -433,8 +442,6 @@ class TimerManager: ObservableObject, TimerManaging {
                     let endDate: Date?
                     let createdAt: Date
                     let lastStartedAt: Date?
-                    let soundEnabled: Bool
-                    let reminderType: ReminderType?
                 }
 
                 let legacyTimers = try JSONDecoder().decode([LegacyTimer].self, from: data)
@@ -445,9 +452,7 @@ class TimerManager: ObservableObject, TimerManaging {
                         description: legacy.description,
                         duration: legacy.duration,
                         repeatFrequency: legacy.repeatFrequency,
-                        endDate: legacy.endDate,
-                        soundEnabled: legacy.soundEnabled,
-                        reminderType: legacy.reminderType ?? .fullscreen
+                        endDate: legacy.endDate
                     )
                     timer.remainingTime = legacy.remainingTime
                     timer.isActive = false
@@ -525,7 +530,6 @@ class TimerManager: ObservableObject, TimerManaging {
             duration: timer.duration,
             repeatFrequency: timer.repeatFrequency,
             endDate: timer.endDate,
-            soundEnabled: timer.soundEnabled,
             reminderType: timer.reminderType,
             autoDismissSeconds: timer.autoDismissSeconds,
             icon: timer.icon

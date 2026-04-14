@@ -9,11 +9,34 @@ final class FullscreenAlertManager: NSObject, NSWindowDelegate {
     private var fullscreenWindow: NSWindow?
     private var hostingView: NSHostingView<FullscreenAlertContent>?
     private var autoDismissTimer: Timer?
-    private var countdownTimer: Timer?
     private var pendingCompletion: (() -> Void)?
     private var currentDismissSeconds: Int = 15
     private var remainingSeconds: Int = 15
+    private var currentTimer: CountdownTimer?
     private static let logger = Logger(subsystem: "com.foo.CountdownReminder", category: "FullscreenAlert")
+
+    class KeyEventView: NSView {
+        var onKeyDown: ((NSEvent) -> Void)?
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func keyDown(with event: NSEvent) {
+            if event.keyCode == 53 {
+                onKeyDown?(event)
+            }
+        }
+
+        override var frame: NSRect {
+            didSet {
+                subviews.forEach { $0.frame = bounds }
+            }
+        }
+
+        override func layout() {
+            super.layout()
+            subviews.forEach { $0.frame = bounds }
+        }
+    }
 
     private override init() {
         super.init()
@@ -22,6 +45,7 @@ final class FullscreenAlertManager: NSObject, NSWindowDelegate {
     func showAlert(timer: CountdownTimer, autoDismissSeconds: Int? = nil, completion: @escaping () -> Void) {
         Self.logger.info("Showing fullscreen alert for timer: \(timer.title), autoDismiss: \(autoDismissSeconds ?? timer.autoDismissSeconds)s")
 
+        currentTimer = timer
         currentDismissSeconds = autoDismissSeconds ?? timer.autoDismissSeconds
         remainingSeconds = currentDismissSeconds
         pendingCompletion = completion
@@ -33,30 +57,24 @@ final class FullscreenAlertManager: NSObject, NSWindowDelegate {
         Self.logger.info("Dismissing fullscreen alert")
 
         DispatchQueue.main.async { [weak self] in
+            SoundManager.shared.stopAllSounds()
             self?.autoDismissTimer?.invalidate()
             self?.autoDismissTimer = nil
-            self?.countdownTimer?.invalidate()
-            self?.countdownTimer = nil
             self?.hideFullscreenWindow()
             self?.pendingCompletion?()
             self?.pendingCompletion = nil
         }
     }
 
-    func updateRemainingSeconds(_ seconds: Int) {
-        remainingSeconds = seconds
+    private func handleSkip() {
+        if let timer = currentTimer, timer.soundEnabled {
+            SoundManager.shared.playSkipSound()
+        }
+        dismissAlert()
     }
 
-    private static func playSystemSound() {
-        let soundNames = ["Breeze", "Pop", "Glass", "Mail"]
-        for name in soundNames {
-            if let sound = NSSound(named: name) {
-                sound.volume = 0.8
-                sound.play()
-                return
-            }
-        }
-        NSSound.beep()
+    func updateRemainingSeconds(_ seconds: Int) {
+        remainingSeconds = seconds
     }
 
     private func createAndShowFullscreenWindow(timer: CountdownTimer) {
@@ -72,19 +90,32 @@ final class FullscreenAlertManager: NSObject, NSWindowDelegate {
             timerDescription: timer.timerDescription ?? "",
             initialSeconds: currentDismissSeconds,
             soundEnabled: timer.soundEnabled,
-            onDismiss: { [weak self] in
+            onNaturalEnd: { [weak self] in
+                if timer.soundEnabled {
+                    SoundManager.shared.playAlertSound()
+                }
+                self?.dismissAlert()
+            },
+            onSkip: { [weak self] in
+                if timer.soundEnabled {
+                    SoundManager.shared.playSkipSound()
+                }
                 self?.dismissAlert()
             },
             onSecondElapse: { [weak self] remaining in
                 self?.remainingSeconds = remaining
-            },
-            onPlaySound: {
-                FullscreenAlertManager.playSystemSound()
             }
         )
 
         let hostingView = NSHostingView(rootView: content)
         hostingView.frame = screen.frame
+
+        let keyEventView = KeyEventView()
+        keyEventView.frame = screen.frame
+        keyEventView.onKeyDown = { [weak self] _ in
+            self?.handleSkip()
+        }
+        keyEventView.addSubview(hostingView)
 
         let window = NSWindow(
             contentRect: screen.frame,
@@ -101,8 +132,9 @@ final class FullscreenAlertManager: NSObject, NSWindowDelegate {
         window.ignoresMouseEvents = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         window.delegate = self
-        window.contentView = hostingView
+        window.contentView = keyEventView
         window.orderFrontRegardless()
+        window.makeFirstResponder(keyEventView)
 
         self.hostingView = hostingView
         self.fullscreenWindow = window
@@ -131,9 +163,10 @@ struct FullscreenAlertContent: View {
     let timerDescription: String
     let initialSeconds: Int
     let soundEnabled: Bool
-    let onDismiss: () -> Void
+    var onNaturalEnd: (() -> Void)?
+    var onSkip: (() -> Void)?
+    var onDismiss: (() -> Void)?
     var onSecondElapse: ((Int) -> Void)?
-    var onPlaySound: (() -> Void)?
 
     @State private var scale: CGFloat = 0.5
     @State private var opacity: Double = 0
@@ -142,15 +175,17 @@ struct FullscreenAlertContent: View {
     @State private var ringProgress: Double = 1.0
     @State private var backgroundOpacity: Double = 0
     @State private var textColor: Color = .clear
+    @State private var countdownTimer: Timer?
 
-    init(timerTitle: String, timerDescription: String, initialSeconds: Int, soundEnabled: Bool = true, onDismiss: @escaping () -> Void, onSecondElapse: ((Int) -> Void)? = nil, onPlaySound: (() -> Void)? = nil) {
+    init(timerTitle: String, timerDescription: String, initialSeconds: Int, soundEnabled: Bool = true, onNaturalEnd: (() -> Void)? = nil, onSkip: (() -> Void)? = nil, onDismiss: (() -> Void)? = nil, onSecondElapse: ((Int) -> Void)? = nil) {
         self.timerTitle = timerTitle
         self.timerDescription = timerDescription
         self.initialSeconds = initialSeconds
         self.soundEnabled = soundEnabled
+        self.onNaturalEnd = onNaturalEnd
+        self.onSkip = onSkip
         self.onDismiss = onDismiss
         self.onSecondElapse = onSecondElapse
-        self.onPlaySound = onPlaySound
         _remainingSeconds = State(initialValue: initialSeconds)
     }
 
@@ -178,7 +213,10 @@ struct FullscreenAlertContent: View {
 
                     Spacer()
 
-                    Button(action: onDismiss) {
+                    Button(action: {
+                        self.stopCountdownTimer()
+                        onSkip?()
+                    }) {
                         HStack(spacing: 10) {
                             Image(systemName: "forward.fill")
                                 .font(.system(size: 18))
@@ -220,10 +258,12 @@ struct FullscreenAlertContent: View {
             }
 
             startCountdownTimer()
-
-            if soundEnabled {
-                onPlaySound?()
-            }
+        }
+        .focusable()
+        .onKeyPress(.escape) {
+            self.stopCountdownTimer()
+            onSkip?()
+            return .handled
         }
     }
 
@@ -277,46 +317,28 @@ struct FullscreenAlertContent: View {
     private func startCountdownTimer() {
         ringProgress = 1.0
 
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            if remainingSeconds > 0 {
-                remainingSeconds -= 1
-                ringProgress = Double(remainingSeconds) / Double(initialSeconds)
-                onSecondElapse?(remainingSeconds)
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [self] timer in
+            DispatchQueue.main.async {
+                if self.remainingSeconds > 0 {
+                    self.remainingSeconds -= 1
+                    self.ringProgress = Double(self.remainingSeconds) / Double(self.initialSeconds)
+                    self.onSecondElapse?(self.remainingSeconds)
 
-                if remainingSeconds <= 0 {
+                    if self.remainingSeconds <= 0 {
+                        timer.invalidate()
+                        self.countdownTimer = nil
+                        self.onNaturalEnd?()
+                    }
+                } else {
                     timer.invalidate()
-                    onDismiss()
+                    self.countdownTimer = nil
                 }
-            } else {
-                timer.invalidate()
             }
         }
     }
-}
 
-@available(macOS 14.0, *)
-extension FullscreenAlertContent {
-    struct KeyEventHandler: NSViewRepresentable {
-        let onKeyDown: (NSEvent) -> Bool
-
-        func makeNSView(context: Context) -> NSView {
-            let view = KeyEventView()
-            view.onKeyDown = onKeyDown
-            return view
-        }
-
-        func updateNSView(_ nsView: NSView, context: Context) {}
-    }
-
-    class KeyEventView: NSView {
-        var onKeyDown: ((NSEvent) -> Bool)?
-
-        override var acceptsFirstResponder: Bool { true }
-
-        override func keyDown(with event: NSEvent) {
-            if event.keyCode == 53 {
-                onKeyDown?(event)
-            }
-        }
+    private func stopCountdownTimer() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
     }
 }

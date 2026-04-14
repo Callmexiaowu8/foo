@@ -127,7 +127,7 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
     enum OldCodingKeys: String, CodingKey {
         case id, title, timerDescription, duration, remainingTime
         case isActive, isPaused, repeatFrequency, endDate
-        case createdAt, lastStartedAt, soundEnabled, showFullscreenAlert
+        case createdAt, lastStartedAt, showFullscreenAlert
         case reminderStartHour, reminderStartMinute
         case reminderEndHour, reminderEndMinute, hasTimeRange
     }
@@ -145,7 +145,7 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         lastStartedAt = try container.decodeIfPresent(Date.self, forKey: .lastStartedAt)
-        soundEnabled = try container.decode(Bool.self, forKey: .soundEnabled)
+        soundEnabled = try container.decodeIfPresent(Bool.self, forKey: .soundEnabled) ?? true
         if let rt = try? container.decode(ReminderType.self, forKey: .reminderType) {
             reminderType = rt
         } else {

@@ -158,6 +158,7 @@ struct ContentView: View {
                             onResume: { timerManager.resumeTimer(timer) },
                             onReset: { timerManager.resetTimer(timer) },
                             onSkip: { timerManager.skipTimer(timer) },
+                            onTestReminder: { timerManager.testReminder(for: timer) },
                             onDelete: {
                                 timerToDelete = timer
                                 showingDeleteConfirmation = true
@@ -269,6 +270,7 @@ struct UnifiedTimerRow: View {
     let onResume: () -> Void
     let onReset: () -> Void
     let onSkip: () -> Void
+    let onTestReminder: () -> Void
     let onDelete: () -> Void
     let onEdit: () -> Void
 
@@ -393,6 +395,9 @@ struct UnifiedTimerRow: View {
             })
 
             Spacer()
+
+            // 测试提醒按钮
+            controlButton(title: "生效", icon: "bell.fill", color: AppColors.success, action: onTestReminder)
 
             // 编辑按钮
             controlButton(title: "编辑", icon: "pencil", color: AppColors.primary, action: onEdit)
