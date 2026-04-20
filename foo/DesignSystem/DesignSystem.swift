@@ -121,6 +121,22 @@ extension Color {
     }
 }
 
+// MARK: - 按钮尺寸规范
+enum AppButtonSize {
+    static let large: CGFloat = 44
+    static let medium: CGFloat = 36
+    static let small: CGFloat = 32
+    static let iconOnly: CGFloat = 32
+}
+
+// MARK: - 按钮圆角规范
+enum AppButtonCornerRadius {
+    static let pill: CGFloat = 9999
+    static let large: CGFloat = 12
+    static let medium: CGFloat = 10
+    static let small: CGFloat = 8
+}
+
 // MARK: - View 扩展
 @available(macOS 14.0, *)
 extension View {
@@ -147,37 +163,138 @@ extension View {
             )
     }
 
-    func primaryButtonStyle() -> some View {
-        self
+    func primaryButtonStyle(isHovered: Bool = false, isPressed: Bool = false) -> some View {
+        let scale = isPressed ? 0.97 : (isHovered ? 1.02 : 1.0)
+        let shadowRadius: CGFloat = isHovered ? 12 : 8
+        let shadowOpacity: Double = isHovered ? 0.4 : 0.3
+
+        return self
             .padding(.horizontal, AppSpacing.lg)
             .padding(.vertical, AppSpacing.md)
             .background(
                 LinearGradient(
                     colors: [AppColors.gradientStart, AppColors.gradientEnd],
-                    startPoint: .leading,
-                    endPoint: .trailing
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
             )
             .foregroundColor(.white)
-            .cornerRadius(AppCornerRadius.md)
+            .cornerRadius(AppButtonCornerRadius.medium)
             .shadow(
-                color: AppColors.primary.opacity(0.3),
-                radius: 8,
+                color: AppColors.primary.opacity(shadowOpacity),
+                radius: shadowRadius,
                 x: 0,
-                y: 4
+                y: isHovered ? 6 : 4
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppButtonCornerRadius.medium)
+                    .stroke(Color.white.opacity(isHovered ? 0.3 : 0.15), lineWidth: 1)
+            )
+            .scaleEffect(scale)
+    }
+
+    func secondaryButtonStyle(isHovered: Bool = false) -> some View {
+        return self
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.vertical, AppSpacing.md)
+            .background(
+                isHovered ? AppColors.primary.opacity(0.08) : AppColors.cardBackground
+            )
+            .foregroundColor(isHovered ? AppColors.primaryDark : AppColors.primary)
+            .cornerRadius(AppButtonCornerRadius.medium)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppButtonCornerRadius.medium)
+                    .stroke(AppColors.primary.opacity(isHovered ? 0.5 : 0.3), lineWidth: isHovered ? 1.5 : 1)
             )
     }
 
-    func secondaryButtonStyle() -> some View {
-        self
-            .padding(.horizontal, AppSpacing.lg)
-            .padding(.vertical, AppSpacing.md)
-            .background(AppColors.cardBackground)
-            .foregroundColor(AppColors.primary)
-            .cornerRadius(AppCornerRadius.md)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppCornerRadius.md)
-                    .stroke(AppColors.primary.opacity(0.3), lineWidth: 1)
+    func actionButtonStyle(color: Color, isHovered: Bool = false, isPressed: Bool = false) -> some View {
+        let scale = isPressed ? 0.95 : (isHovered ? 1.05 : 1.0)
+        let bgOpacity = isHovered ? 0.18 : 0.1
+        let borderOpacity = isHovered ? 0.4 : 0.2
+        let shadowOpacity = isHovered ? 0.25 : 0.0
+
+        return self
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: AppButtonCornerRadius.small)
+                    .fill(color.opacity(bgOpacity))
             )
+            .foregroundColor(isHovered ? color : color)
+            .cornerRadius(AppButtonCornerRadius.small)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppButtonCornerRadius.small)
+                    .stroke(color.opacity(borderOpacity), lineWidth: isHovered ? 1.5 : 1)
+            )
+            .shadow(
+                color: color.opacity(shadowOpacity),
+                radius: isHovered ? 6 : 0,
+                x: 0,
+                y: isHovered ? 3 : 0
+            )
+            .scaleEffect(scale)
+    }
+
+    func iconButtonStyle(color: Color, size: CGFloat = AppButtonSize.iconOnly, isHovered: Bool = false, isPressed: Bool = false) -> some View {
+        let scale = isPressed ? 0.92 : (isHovered ? 1.1 : 1.0)
+        let bgOpacity = isHovered ? 0.2 : 0.1
+        let borderOpacity = isHovered ? 0.4 : 0.25
+        let shadowOpacity = isHovered ? 0.3 : 0.0
+
+        return self
+            .font(.system(size: size * 0.375, weight: .semibold))
+            .foregroundColor(color)
+            .frame(width: size, height: size)
+            .background(
+                RoundedRectangle(cornerRadius: AppButtonCornerRadius.small)
+                    .fill(color.opacity(bgOpacity))
+            )
+            .cornerRadius(AppButtonCornerRadius.small)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppButtonCornerRadius.small)
+                    .stroke(color.opacity(borderOpacity), lineWidth: isHovered ? 1.5 : 1)
+            )
+            .shadow(
+                color: color.opacity(shadowOpacity),
+                radius: isHovered ? 6 : 0,
+                x: 0,
+                y: isHovered ? 3 : 0
+            )
+            .scaleEffect(scale)
+    }
+
+    func compactButtonStyle(color: Color, isHovered: Bool = false) -> some View {
+        return self
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(isHovered ? color : AppColors.textSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovered ? color.opacity(0.1) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isHovered ? color.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
+    }
+
+    func pillButtonStyle(color: Color, isHovered: Bool = false, isPressed: Bool = false) -> some View {
+        let scale = isPressed ? 0.96 : (isHovered ? 1.03 : 1.0)
+
+        return self
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(
+                Capsule()
+                    .fill(color.opacity(isHovered ? 0.15 : 0.1))
+            )
+            .foregroundColor(color)
+            .overlay(
+                Capsule()
+                    .stroke(color.opacity(isHovered ? 0.35 : 0.2), lineWidth: isHovered ? 1.5 : 1)
+            )
+            .scaleEffect(scale)
     }
 }

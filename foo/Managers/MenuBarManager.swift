@@ -55,9 +55,9 @@ final class MenuBarManager: NSObject, ObservableObject {
             .environmentObject(timerManager!)
 
         let popover = NSPopover()
-        popover.contentSize = NSSize(width: 300, height: 400)
+        popover.contentSize = NSSize(width: 340, height: 460)
         popover.behavior = .transient
-        popover.animates = false
+        popover.animates = true
         popover.contentViewController = NSHostingController(rootView: contentView)
         self.popover = popover
         

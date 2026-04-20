@@ -24,7 +24,6 @@ protocol TimerManaging: AnyObject {
     func pauseTimer(_ timer: CountdownTimer)
     func resumeTimer(_ timer: CountdownTimer)
     func stopTimer(_ timer: CountdownTimer)
-    func resetTimer(_ timer: CountdownTimer)
     func skipTimer(_ timer: CountdownTimer)
     func testReminder(for timer: CountdownTimer)
     func formatTime(_ timeInterval: TimeInterval) -> String
@@ -59,7 +58,7 @@ class TimerManager: ObservableObject, TimerManaging {
     // MARK: - Constants
     private enum Constants {
         static let refreshInterval: TimeInterval = 0.1
-        static let timersKey = "savedTimers_v4"
+        static let timersKey = "savedTimers_v5"
         static let maxTitleLength = 100
         static let maxDescriptionLength = 500
         static let saveDebounceInterval: TimeInterval = 2.0
@@ -243,29 +242,19 @@ class TimerManager: ObservableObject, TimerManaging {
         }
     }
 
-    func resetTimer(_ timer: CountdownTimer) {
-        timer.reset()
-        completedTimerIds.remove(timer.id)
-        if completedTimer?.id == timer.id {
-            completedTimer = nil
-        }
-        startTimer(timer)
-        updateActiveTimers()
-        markDirty()
-    }
-
     func skipTimer(_ timer: CountdownTimer) {
         timer.remainingTime = 0
         completeTimer(timer)
     }
 
     func testReminder(for timer: CountdownTimer) {
-        guard timer.reminderType == .fullscreen else {
-            return
-        }
-
+        timer.pause()
+        
         FullscreenAlertManager.shared.showAlert(timer: timer) { [weak self] in
-            self?.resetTimer(timer)
+            timer.reset()
+            self?.completedTimerIds.remove(timer.id)
+            self?.startTimer(timer)
+            self?.dismissAlert()
         }
     }
 
@@ -293,18 +282,10 @@ class TimerManager: ObservableObject, TimerManaging {
         completedTimerIds.insert(timer.id)
         completedTimer = timer
 
-        switch timer.reminderType {
-        case .fullscreen:
-            FullscreenAlertManager.shared.showAlert(timer: timer, autoDismissSeconds: timer.autoDismissSeconds) { [weak self] in
-                self?.dismissAlert()
-            }
-            Self.logger.info("Fullscreen alert shown for: \(timer.title)")
-        case .banner:
-            BannerAlertManager.shared.showBanner(timer: timer, autoDismissSeconds: 10) { [weak self] in
-                self?.dismissAlert()
-            }
-            Self.logger.info("Banner alert shown for: \(timer.title)")
+        FullscreenAlertManager.shared.showAlert(timer: timer, autoDismissSeconds: timer.autoDismissSeconds) { [weak self] in
+            self?.dismissAlert()
         }
+        Self.logger.info("Fullscreen alert shown for: \(timer.title)")
 
         sendNotification(for: timer)
         // 注意：不在此处调用 handleRepeat，而是在 dismissAlert 中处理
@@ -343,7 +324,9 @@ class TimerManager: ObservableObject, TimerManaging {
             title: "\(completedTimer.title) (延迟)",
             description: completedTimer.timerDescription,
             duration: TimeInterval(minutes * 60),
-            reminderType: completedTimer.reminderType
+            soundEnabled: completedTimer.soundEnabled,
+            autoDismissSeconds: completedTimer.autoDismissSeconds,
+            icon: completedTimer.icon
         )
 
         addTimer(snoozeTimer)
@@ -353,7 +336,6 @@ class TimerManager: ObservableObject, TimerManaging {
 
     func dismissAlert() {
         FullscreenAlertManager.shared.dismissAlert()
-        BannerAlertManager.shared.dismissAllBanners()
         isFullscreenAlertPresented = false
         
         // 在提醒关闭后才开始新的倒计时周期
@@ -424,7 +406,7 @@ class TimerManager: ObservableObject, TimerManaging {
 
     // MARK: - Legacy Data Migration
     private func loadLegacyTimers() {
-        let legacyKeys = ["savedTimers_v3", "savedTimers_v2", "savedTimers"]
+        let legacyKeys = ["savedTimers_v4", "savedTimers_v3", "savedTimers_v2", "savedTimers"]
 
         for key in legacyKeys {
             guard let data = userDefaults.data(forKey: key) else { continue }
@@ -442,6 +424,9 @@ class TimerManager: ObservableObject, TimerManaging {
                     let endDate: Date?
                     let createdAt: Date
                     let lastStartedAt: Date?
+                    let soundEnabled: Bool?
+                    let autoDismissSeconds: Int?
+                    let icon: String?
                 }
 
                 let legacyTimers = try JSONDecoder().decode([LegacyTimer].self, from: data)
@@ -452,7 +437,10 @@ class TimerManager: ObservableObject, TimerManaging {
                         description: legacy.description,
                         duration: legacy.duration,
                         repeatFrequency: legacy.repeatFrequency,
-                        endDate: legacy.endDate
+                        endDate: legacy.endDate,
+                        soundEnabled: legacy.soundEnabled ?? true,
+                        autoDismissSeconds: legacy.autoDismissSeconds ?? 15,
+                        icon: legacy.icon
                     )
                     timer.remainingTime = legacy.remainingTime
                     timer.isActive = false
@@ -530,7 +518,7 @@ class TimerManager: ObservableObject, TimerManaging {
             duration: timer.duration,
             repeatFrequency: timer.repeatFrequency,
             endDate: timer.endDate,
-            reminderType: timer.reminderType,
+            soundEnabled: timer.soundEnabled,
             autoDismissSeconds: timer.autoDismissSeconds,
             icon: timer.icon
         )

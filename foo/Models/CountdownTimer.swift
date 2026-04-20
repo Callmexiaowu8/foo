@@ -33,29 +33,6 @@ enum RepeatFrequency: String, Codable, CaseIterable {
     }
 }
 
-enum ReminderType: String, Codable {
-    case fullscreen = "全屏幕"
-    case banner = "侧边栏通知"
-
-    var description: String {
-        switch self {
-        case .fullscreen: return "全屏幕提醒"
-        case .banner: return "侧边栏通知"
-        }
-    }
-
-    var iconName: String {
-        switch self {
-        case .fullscreen: return "macwindow"
-        case .banner: return "bell.badge"
-        }
-    }
-
-    static var allCases: [ReminderType] {
-        [.fullscreen, .banner]
-    }
-}
-
 @available(macOS 14.0, *)
 @MainActor
 class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
@@ -72,7 +49,6 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
     @Published var endDate: Date?
     @Published var lastStartedAt: Date?
     @Published var soundEnabled: Bool
-    @Published var reminderType: ReminderType
     @Published var reminderStartHour: Int
     @Published var reminderStartMinute: Int
     @Published var reminderEndHour: Int
@@ -89,7 +65,6 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         repeatFrequency: RepeatFrequency = .once,
         endDate: Date? = nil,
         soundEnabled: Bool = true,
-        reminderType: ReminderType = .fullscreen,
         autoDismissSeconds: Int = 15,
         icon: String? = nil
     ) {
@@ -105,7 +80,6 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         self.createdAt = Date()
         self.lastStartedAt = nil
         self.soundEnabled = soundEnabled
-        self.reminderType = reminderType
         self.reminderStartHour = 0
         self.reminderStartMinute = 0
         self.reminderEndHour = 23
@@ -118,7 +92,7 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, title, timerDescription, duration, remainingTime
         case isActive, isPaused, repeatFrequency, endDate
-        case createdAt, lastStartedAt, soundEnabled, reminderType
+        case createdAt, lastStartedAt, soundEnabled
         case reminderStartHour, reminderStartMinute
         case reminderEndHour, reminderEndMinute, hasTimeRange
         case autoDismissSeconds, icon
@@ -146,13 +120,6 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         lastStartedAt = try container.decodeIfPresent(Date.self, forKey: .lastStartedAt)
         soundEnabled = try container.decodeIfPresent(Bool.self, forKey: .soundEnabled) ?? true
-        if let rt = try? container.decode(ReminderType.self, forKey: .reminderType) {
-            reminderType = rt
-        } else {
-            let container2 = try decoder.container(keyedBy: OldCodingKeys.self)
-            let oldFullscreen = try container2.decodeIfPresent(Bool.self, forKey: .showFullscreenAlert)
-            reminderType = oldFullscreen == true ? .fullscreen : .banner
-        }
         reminderStartHour = try container.decodeIfPresent(Int.self, forKey: .reminderStartHour) ?? 0
         reminderStartMinute = try container.decodeIfPresent(Int.self, forKey: .reminderStartMinute) ?? 0
         reminderEndHour = try container.decodeIfPresent(Int.self, forKey: .reminderEndHour) ?? 23
@@ -176,7 +143,6 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(lastStartedAt, forKey: .lastStartedAt)
         try container.encode(soundEnabled, forKey: .soundEnabled)
-        try container.encode(reminderType, forKey: .reminderType)
         try container.encode(reminderStartHour, forKey: .reminderStartHour)
         try container.encode(reminderStartMinute, forKey: .reminderStartMinute)
         try container.encode(reminderEndHour, forKey: .reminderEndHour)

@@ -9,6 +9,8 @@ struct ContentView: View {
     @State private var hoveredTimerId: UUID?
     @State private var showingDeleteConfirmation = false
     @State private var timerToDelete: CountdownTimer?
+    @State private var isHoveringNewButton = false
+    @State private var isNewButtonPressed = false
 
     private var sortedTimers: [CountdownTimer] {
         let timers = timerManager.timers
@@ -156,7 +158,6 @@ struct ContentView: View {
                             onStart: { timerManager.startTimer(timer) },
                             onPause: { timerManager.pauseTimer(timer) },
                             onResume: { timerManager.resumeTimer(timer) },
-                            onReset: { timerManager.resetTimer(timer) },
                             onSkip: { timerManager.skipTimer(timer) },
                             onTestReminder: { timerManager.testReminder(for: timer) },
                             onDelete: {
@@ -226,9 +227,27 @@ struct ContentView: View {
                     Text("新建倒计时")
                         .font(AppFonts.callout.weight(.semibold))
                 }
-                .primaryButtonStyle()
+                .primaryButtonStyle(isHovered: isHoveringNewButton, isPressed: isNewButtonPressed)
             }
             .buttonStyle(PlainButtonStyle())
+            .onHover { hovering in
+                withAnimation(AppAnimations.fast) {
+                    isHoveringNewButton = hovering
+                }
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        withAnimation(AppAnimations.fast) {
+                            isNewButtonPressed = true
+                        }
+                    }
+                    .onEnded { _ in
+                        withAnimation(AppAnimations.fast) {
+                            isNewButtonPressed = false
+                        }
+                    }
+            )
 
             Spacer()
 
@@ -268,7 +287,6 @@ struct UnifiedTimerRow: View {
     let onStart: () -> Void
     let onPause: () -> Void
     let onResume: () -> Void
-    let onReset: () -> Void
     let onSkip: () -> Void
     let onTestReminder: () -> Void
     let onDelete: () -> Void
@@ -276,7 +294,7 @@ struct UnifiedTimerRow: View {
 
     @EnvironmentObject var timerManager: TimerManager
     @State private var isPressed = false
-    @State private var showingResetConfirmation = false
+    @State private var hoveredButtonId: String?
 
     var body: some View {
         VStack(spacing: AppSpacing.md) {
@@ -380,58 +398,81 @@ struct UnifiedTimerRow: View {
 
     private var controlButtons: some View {
         HStack(spacing: AppSpacing.sm) {
-            // 开始/暂停按钮
+            // 暂停/继续按钮
             if timer.isActive {
-                controlButton(title: "暂停", icon: "pause.fill", color: AppColors.warning, action: onPause)
+                controlButton(
+                    id: "pause",
+                    title: "暂停",
+                    icon: "pause.fill",
+                    color: AppColors.warning,
+                    action: onPause
+                )
             } else if timer.isPaused {
-                controlButton(title: "继续", icon: "play.fill", color: AppColors.success, action: onResume)
+                controlButton(
+                    id: "resume",
+                    title: "继续",
+                    icon: "play.fill",
+                    color: AppColors.success,
+                    action: onResume
+                )
             } else {
-                controlButton(title: "开始", icon: "play.fill", color: AppColors.success, action: onStart)
+                controlButton(
+                    id: "start",
+                    title: "开始",
+                    icon: "play.fill",
+                    color: AppColors.success,
+                    action: onStart
+                )
             }
 
-            // 重置按钮
-            controlButton(title: "重置", icon: "arrow.counterclockwise", color: AppColors.textSecondary, action: {
-                showingResetConfirmation = true
-            })
-
-            Spacer()
-
-            // 测试提醒按钮
-            controlButton(title: "生效", icon: "bell.fill", color: AppColors.success, action: onTestReminder)
+            // 生效按钮
+            controlButton(
+                id: "test",
+                title: "生效",
+                icon: "bell.fill",
+                color: AppColors.success,
+                action: onTestReminder
+            )
 
             // 编辑按钮
-            controlButton(title: "编辑", icon: "pencil", color: AppColors.primary, action: onEdit)
+            controlButton(
+                id: "edit",
+                title: "编辑",
+                icon: "pencil",
+                color: AppColors.primary,
+                action: onEdit
+            )
 
             // 删除按钮
-            controlButton(title: "删除", icon: "trash", color: AppColors.error, action: onDelete)
+            controlButton(
+                id: "delete",
+                title: "删除",
+                icon: "trash",
+                color: AppColors.error,
+                action: onDelete
+            )
         }
-        .alert("确认重置？", isPresented: $showingResetConfirmation) {
-            Button("取消", role: .cancel) { }
-            Button("重置", role: .destructive) {
-                onReset()
-            }
-        } message: {
-            Text("确定要将 \"\(timer.title)\" 重置为初始时间吗？")
-        }
+        .frame(maxWidth: .infinity)
     }
 
-    private func controlButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
+    private func controlButton(id: String, title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        let buttonHovered = hoveredButtonId == id
+
+        return Button(action: action) {
+            HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                 Text(title)
                     .font(AppFonts.caption.weight(.medium))
             }
-            .foregroundColor(color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(color.opacity(0.12))
-            )
+            .actionButtonStyle(color: color, isHovered: buttonHovered)
         }
         .buttonStyle(PlainButtonStyle())
+        .onHover { hovering in
+            withAnimation(AppAnimations.fast) {
+                hoveredButtonId = hovering ? id : nil
+            }
+        }
     }
 
     private var iconName: String {

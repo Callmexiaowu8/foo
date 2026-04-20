@@ -12,7 +12,6 @@ struct AddTimerView: View {
     @State private var hoursText = "0"
     @State private var minutesText = "25"
     @State private var soundEnabled = true
-    @State private var reminderType: ReminderType = .fullscreen
     @State private var autoDismissSeconds: Int = 15
     @State private var selectedIcon: String? = nil
     
@@ -176,17 +175,10 @@ struct AddTimerView: View {
                 Divider()
                     .padding(.leading, 44)
 
-                ReminderTypeSelector(selectedType: $reminderType)
-
-                if reminderType == .fullscreen {
-                    Divider()
-                        .padding(.leading, 44)
-
-                    AutoDismissSelector(
-                        seconds: $autoDismissSeconds,
-                        label: "自动消失时间"
-                    )
-                }
+                AutoDismissSelector(
+                    seconds: $autoDismissSeconds,
+                    label: "自动消失时间"
+                )
             }
         }
         .cardStyle()
@@ -211,7 +203,6 @@ struct AddTimerView: View {
             duration: duration,
             repeatFrequency: .daily,
             soundEnabled: soundEnabled,
-            reminderType: reminderType,
             autoDismissSeconds: autoDismissSeconds,
             icon: selectedIcon
         )
@@ -713,7 +704,6 @@ struct EditTimerView: View {
     @State private var hoursText: String
     @State private var minutesText: String
     @State private var soundEnabled: Bool
-    @State private var reminderType: ReminderType
     @State private var autoDismissSeconds: Int
     @State private var showingDiscardAlert = false
     @State private var showingDeleteAlert = false
@@ -730,7 +720,6 @@ struct EditTimerView: View {
         _hoursText = State(initialValue: "\(Int(timer.duration) / 3600)")
         _minutesText = State(initialValue: "\((Int(timer.duration) % 3600) / 60)")
         _soundEnabled = State(initialValue: timer.soundEnabled)
-        _reminderType = State(initialValue: timer.reminderType)
         _autoDismissSeconds = State(initialValue: timer.autoDismissSeconds)
         _selectedIcon = State(initialValue: timer.icon)
 
@@ -740,7 +729,6 @@ struct EditTimerView: View {
             duration: timer.duration,
             repeatFrequency: .once,
             soundEnabled: timer.soundEnabled,
-            reminderType: timer.reminderType,
             autoDismissSeconds: timer.autoDismissSeconds,
             icon: timer.icon
         )
@@ -910,17 +898,10 @@ struct EditTimerView: View {
                 Divider()
                     .padding(.leading, 44)
 
-                ReminderTypeSelector(selectedType: $reminderType)
-
-                if reminderType == .fullscreen {
-                    Divider()
-                        .padding(.leading, 44)
-
-                    AutoDismissSelector(
-                        seconds: $autoDismissSeconds,
-                        label: "自动消失时间"
-                    )
-                }
+                AutoDismissSelector(
+                    seconds: $autoDismissSeconds,
+                    label: "自动消失时间"
+                )
             }
         }
         .cardStyle()
@@ -962,7 +943,6 @@ struct EditTimerView: View {
         timer.repeatFrequency = .once
         timer.endDate = nil
         timer.soundEnabled = soundEnabled
-        timer.reminderType = reminderType
         timer.autoDismissSeconds = autoDismissSeconds
         timer.icon = selectedIcon
 
