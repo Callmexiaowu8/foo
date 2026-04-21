@@ -7,10 +7,24 @@ enum AppColors {
     static let primaryLight = Color(hex: "5AC8FA")
     static let primaryDark = Color(hex: "0077E6")
 
-    static let success = Color(hex: "34C759")
-    static let warning = Color(hex: "FF9500")
-    static let error = Color(hex: "FF3B30")
+    // 渐变色组
+    static let accentBlue = Color(hex: "0A84FF")
+    static let accentCyan = Color(hex: "5AC8FA")
+    static let accentBlueDarker = Color(hex: "0077E6")
+    static let accentCyanDarker = Color(hex: "4AB8EA")
+
+    static let success = Color(hex: "30D15A")
+    static let successLight = Color(hex: "34C759")
+    static let warning = Color(hex: "FF9F0A")
+    static let warningLight = Color(hex: "FF9500")
+    static let error = Color(hex: "FF453A")
+    static let errorLight = Color(hex: "FF3B30")
     static let info = Color(hex: "5856D6")
+    
+    // 状态颜色（统一使用）
+    static let activeGreen = Color(hex: "34C759")
+    static let pausedOrange = Color(hex: "FF9500")
+    static let inactiveGray = Color(hex: "8E8E93")
 
     static let background = Color(hex: "F5F7FA")
     static let cardBackground = Color.white
@@ -18,6 +32,10 @@ enum AppColors {
     static let textPrimary = Color(hex: "1C1C1E")
     static let textSecondary = Color(hex: "8E8E93")
     static let textTertiary = Color(hex: "C7C7CC")
+    
+    // 菜单栏背景色
+    static let menuBarBackgroundTop = Color(hex: "E8F4FD")
+    static let menuBarBackgroundBottom = Color(hex: "F0F8FF")
 
     static let gradientStart = Color(hex: "0A84FF")
     static let gradientEnd = Color(hex: "5AC8FA")

@@ -182,26 +182,40 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
     var isTimeRangeValid: Bool {
         let startMinutes = reminderStartHour * 60 + reminderStartMinute
         let endMinutes = reminderEndHour * 60 + reminderEndMinute
-        return startMinutes < endMinutes
+        return startMinutes != endMinutes
+    }
+    
+    var isCrossMidnight: Bool {
+        let startMinutes = reminderStartHour * 60 + reminderStartMinute
+        let endMinutes = reminderEndHour * 60 + reminderEndMinute
+        return startMinutes >= endMinutes
     }
 
     var formattedTimeRange: String {
         let start = String(format: "%02d:%02d", reminderStartHour, reminderStartMinute)
         let end = String(format: "%02d:%02d", reminderEndHour, reminderEndMinute)
-        return "\(start) - \(end)"
+        let crossMidnightIndicator = isCrossMidnight ? " (次日)" : ""
+        return "\(start) - \(end)\(crossMidnightIndicator)"
     }
 
     func isWithinTimeRange() -> Bool {
         guard hasTimeRange else { return true }
-        guard isTimeRangeValid else { return true }
+        guard isTimeRangeValid else { return false }
+        
         let calendar = Calendar.current
         let now = Date()
-        let hour = calendar.component(.hour, from: now)
-        let minute = calendar.component(.minute, from: now)
-        let currentMinutes = hour * 60 + minute
+        let currentHour = calendar.component(.hour, from: now)
+        let currentMinute = calendar.component(.minute, from: now)
+        let currentMinutes = currentHour * 60 + currentMinute
+        
         let startMinutes = reminderStartHour * 60 + reminderStartMinute
         let endMinutes = reminderEndHour * 60 + reminderEndMinute
-        return currentMinutes >= startMinutes && currentMinutes <= endMinutes
+        
+        if isCrossMidnight {
+            return currentMinutes >= startMinutes || currentMinutes <= endMinutes
+        } else {
+            return currentMinutes >= startMinutes && currentMinutes <= endMinutes
+        }
     }
 
     func start() {
@@ -238,7 +252,9 @@ class CountdownTimer: ObservableObject, Identifiable, Codable, Equatable {
 
     func tick() -> Bool {
         guard isActive && !isPaused else { return false }
-        remainingTime -= 1
-        return remainingTime <= 0
+        guard remainingTime > 0 else { return true }
+        
+        remainingTime = max(0, remainingTime - 1)
+        return remainingTime == 0
     }
 }

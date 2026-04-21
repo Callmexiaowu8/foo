@@ -247,4 +247,85 @@ class TimerSyncTests: XCTestCase {
         let savedTimer = timerManager.timers.first { $0.id == timer.id }
         XCTAssertEqual(savedTimer?.title, "未命名计时器")
     }
+
+    // MARK: - 边界条件测试
+
+    /// 测试：tick 边界条件 - remainingTime 为 0 时不应继续减少
+    func testTickDoesNotGoNegative() {
+        let timer = CountdownTimer(title: "边界测试", duration: 1)
+        timerManager.addTimer(timer)
+        timerManager.startTimer(timer)
+
+        timer.remainingTime = 0
+
+        let completed = timer.tick()
+
+        XCTAssertTrue(completed)
+        XCTAssertEqual(timer.remainingTime, 0, "remainingTime 不应变为负数")
+    }
+
+    /// 测试：tick 边界条件 - remainingTime 为负数时的处理
+    func testTickWithNegativeRemainingTime() {
+        let timer = CountdownTimer(title: "负值测试", duration: 5)
+        timerManager.addTimer(timer)
+        timerManager.startTimer(timer)
+
+        timer.remainingTime = -5
+
+        let completed = timer.tick()
+
+        XCTAssertTrue(completed)
+        XCTAssertEqual(timer.remainingTime, 0, "remainingTime 应被限制为 0")
+    }
+
+    /// 测试：时间范围跨午夜场景
+    func testTimeRangeCrossMidnight() {
+        let timer = CountdownTimer(title: "跨午夜测试", duration: 60)
+        timer.reminderStartHour = 23
+        timer.reminderStartMinute = 0
+        timer.reminderEndHour = 1
+        timer.reminderEndMinute = 0
+        timer.hasTimeRange = true
+
+        XCTAssertTrue(timer.isCrossMidnight)
+        XCTAssertTrue(timer.isTimeRangeValid)
+    }
+
+    /// 测试：时间范围不跨午夜场景
+    func testTimeRangeSameDay() {
+        let timer = CountdownTimer(title: "同日测试", duration: 60)
+        timer.reminderStartHour = 9
+        timer.reminderStartMinute = 0
+        timer.reminderEndHour = 17
+        timer.reminderEndMinute = 0
+        timer.hasTimeRange = true
+
+        XCTAssertFalse(timer.isCrossMidnight)
+        XCTAssertTrue(timer.isTimeRangeValid)
+    }
+
+    /// 测试：无效时间范围（开始等于结束）
+    func testInvalidTimeRangeSameStartEnd() {
+        let timer = CountdownTimer(title: "无效范围测试", duration: 60)
+        timer.reminderStartHour = 12
+        timer.reminderStartMinute = 0
+        timer.reminderEndHour = 12
+        timer.reminderEndMinute = 0
+        timer.hasTimeRange = true
+
+        XCTAssertFalse(timer.isTimeRangeValid)
+    }
+
+    /// 测试：格式化时间范围显示（跨午夜）
+    func testFormattedTimeRangeCrossMidnight() {
+        let timer = CountdownTimer(title: "显示测试", duration: 60)
+        timer.reminderStartHour = 23
+        timer.reminderStartMinute = 30
+        timer.reminderEndHour = 1
+        timer.reminderEndMinute = 30
+        timer.hasTimeRange = true
+
+        let formatted = timer.formattedTimeRange
+        XCTAssertEqual(formatted, "23:30 - 01:30 (次日)")
+    }
 }

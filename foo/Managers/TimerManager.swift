@@ -468,37 +468,47 @@ class TimerManager: ObservableObject, TimerManaging {
 
     nonisolated func handleAppWillEnterForeground() {
         Task { @MainActor in
-            guard let backgroundEnterTime = backgroundEnterTime else {
-                Self.logger.debug("No background time recorded, skipping adjustment")
-                return
-            }
+            await applyBackgroundTimeAdjustment()
+        }
+    }
+    
+    @MainActor
+    private func applyBackgroundTimeAdjustment() async {
+        guard let backgroundEnterTime = backgroundEnterTime else {
+            Self.logger.debug("No background time recorded, skipping adjustment")
+            return
+        }
+        
+        let timeInBackground = Date().timeIntervalSince(backgroundEnterTime)
+        self.backgroundEnterTime = nil
+        
+        Self.logger.info("App entering foreground, time in background: \(String(format: "%.1f", timeInBackground))s")
+        
+        var timersNeedingCompletion: [CountdownTimer] = []
+        var hasChanges = false
+        
+        for timer in timers where timer.isActive && !timer.isPaused {
+            let timeToSubtract = min(timeInBackground, timer.remainingTime)
             
-            let timeInBackground = Date().timeIntervalSince(backgroundEnterTime)
-            self.backgroundEnterTime = nil
-            
-            Self.logger.info("App entering foreground, time in background: \(String(format: "%.1f", timeInBackground))s")
-            
-            var hasChanges = false
-            
-            for timer in timers where timer.isActive && !timer.isPaused {
-                let timeToSubtract = min(timeInBackground, timer.remainingTime)
+            if timeToSubtract > 0 {
+                timer.remainingTime = max(0, timer.remainingTime - timeToSubtract)
+                hasChanges = true
                 
-                if timeToSubtract > 0 {
-                    timer.remainingTime = max(0, timer.remainingTime - timeToSubtract)
-                    hasChanges = true
-                    
-                    Self.logger.debug("Adjusted timer '\(timer.title)': subtracted \(String(format: "%.1f", timeToSubtract))s, remaining: \(String(format: "%.1f", timer.remainingTime))s")
-                    
-                    if timer.remainingTime <= 0 {
-                        completeTimer(timer)
-                    }
+                Self.logger.debug("Adjusted timer '\(timer.title)': subtracted \(String(format: "%.1f", timeToSubtract))s, remaining: \(String(format: "%.1f", timer.remainingTime))s")
+                
+                if timer.remainingTime <= 0 {
+                    timersNeedingCompletion.append(timer)
                 }
             }
-            
-            if hasChanges {
-                updateActiveTimers()
-                markDirty()
-            }
+        }
+        
+        for timer in timersNeedingCompletion {
+            completeTimer(timer)
+        }
+        
+        if hasChanges || !timersNeedingCompletion.isEmpty {
+            updateActiveTimers()
+            markDirty()
         }
     }
 

@@ -51,8 +51,13 @@ final class MenuBarManager: NSObject, ObservableObject {
         button.target = self
 
         // 一次性创建 popover 及其内容，避免每次点击都创建新实例
+        guard let timerManager = self.timerManager else {
+            Self.logger.error("TimerManager not configured, cannot setup menu bar")
+            return
+        }
+        
         let contentView = MenuBarPopoverView()
-            .environmentObject(timerManager!)
+            .environmentObject(timerManager)
 
         let popover = NSPopover()
         popover.contentSize = NSSize(width: 340, height: 460)

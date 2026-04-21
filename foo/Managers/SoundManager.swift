@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-@available(macOS 10.9, *)
+@available(macOS 14.0, *)
 final class SoundManager {
     static let shared = SoundManager()
 

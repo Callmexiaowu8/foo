@@ -378,6 +378,11 @@ struct UnifiedTimerRow: View {
                     }
                 }
         )
+        .contextMenu {
+            Button("删除", role: .destructive) {
+                onDelete()
+            }
+        }
     }
 
     private var progressBar: some View {

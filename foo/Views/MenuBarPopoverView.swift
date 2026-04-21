@@ -35,8 +35,8 @@ struct MenuBarPopoverView: View {
         .background(
             LinearGradient(
                 gradient: Gradient(colors: [
-                    Color(hex: "E8F4FD"),
-                    Color(hex: "F0F8FF")
+                    AppColors.menuBarBackgroundTop,
+                    AppColors.menuBarBackgroundBottom
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
@@ -79,13 +79,13 @@ struct MenuBarPopoverView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "0A84FF"), Color(hex: "5AC8FA")],
+                            colors: [AppColors.accentBlue, AppColors.accentCyan],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
                     .frame(width: 36, height: 36)
-                    .shadow(color: Color(hex: "0A84FF").opacity(0.3), radius: 6, x: 0, y: 3)
+                    .shadow(color: AppColors.accentBlue.opacity(0.3), radius: 6, x: 0, y: 3)
 
                 Image(systemName: "timer")
                     .font(.system(size: 16, weight: .semibold))
@@ -95,11 +95,11 @@ struct MenuBarPopoverView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("倒计时提醒")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color(hex: "1C1C1E"))
+                    .foregroundColor(AppColors.textPrimary)
 
                 Text("管理您的计时器")
                     .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "8E8E93"))
+                    .foregroundColor(AppColors.textSecondary)
             }
 
             Spacer()
@@ -114,14 +114,14 @@ struct MenuBarPopoverView: View {
                             .fill(
                                 LinearGradient(
                                     colors: isHoveringNewTimer ?
-                                        [Color(hex: "0077E6"), Color(hex: "4AB8EA")] :
-                                        [Color(hex: "0A84FF"), Color(hex: "5AC8FA")],
+                                        [AppColors.accentBlueDarker, AppColors.accentCyanDarker] :
+                                        [AppColors.accentBlue, AppColors.accentCyan],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                     )
-                    .shadow(color: Color(hex: "0A84FF").opacity(isHoveringNewTimer ? 0.4 : 0.3), radius: isHoveringNewTimer ? 6 : 4, x: 0, y: isHoveringNewTimer ? 3 : 2)
+                    .shadow(color: AppColors.accentBlue.opacity(isHoveringNewTimer ? 0.4 : 0.3), radius: isHoveringNewTimer ? 6 : 4, x: 0, y: isHoveringNewTimer ? 3 : 2)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.white.opacity(isHoveringNewTimer ? 0.35 : 0.2), lineWidth: 1)
@@ -154,7 +154,7 @@ struct MenuBarPopoverView: View {
                     .font(.system(size: 32, weight: .light))
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [Color(hex: "0A84FF"), Color(hex: "5AC8FA")],
+                            colors: [AppColors.accentBlue, AppColors.accentCyan],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -164,11 +164,11 @@ struct MenuBarPopoverView: View {
             VStack(spacing: 6) {
                 Text("暂无进行中的计时器")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(hex: "1C1C1E"))
+                    .foregroundColor(AppColors.textPrimary)
 
                 Text("点击右上角 + 按钮创建")
                     .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "8E8E93"))
+                    .foregroundColor(AppColors.textSecondary)
             }
 
             Spacer()
@@ -223,19 +223,19 @@ struct MenuBarPopoverView: View {
         HStack(spacing: 12) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(Color(hex: "34C759"))
+                    .fill(AppColors.activeGreen)
                     .frame(width: 6, height: 6)
 
                 Text("\(timerManager.timers.count) 个计时器")
                     .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "8E8E93"))
+                    .foregroundColor(AppColors.textSecondary)
             }
 
             Spacer()
 
             Button(action: openMainWindow) {
                 Text("打开主窗口")
-                    .compactButtonStyle(color: Color(hex: "0A84FF"), isHovered: isHoveringOpenMain)
+                    .compactButtonStyle(color: AppColors.accentBlue, isHovered: isHoveringOpenMain)
             }
             .buttonStyle(PlainButtonStyle())
             .help("打开主窗口")
@@ -247,7 +247,7 @@ struct MenuBarPopoverView: View {
 
             Button(action: { NSApp.terminate(nil) }) {
                 Text("退出")
-                    .compactButtonStyle(color: Color(hex: "FF3B30"), isHovered: isHoveringQuit)
+                    .compactButtonStyle(color: AppColors.errorLight, isHovered: isHoveringQuit)
             }
             .buttonStyle(PlainButtonStyle())
             .help("退出应用")
@@ -311,12 +311,12 @@ struct ModernTimerCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(timer.title)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: "1C1C1E"))
+                        .foregroundColor(AppColors.textPrimary)
                         .lineLimit(1)
 
                     Text(formattedTime)
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(timer.isPaused ? Color(hex: "FF9500") : Color(hex: "8E8E93"))
+                        .foregroundColor(timer.isPaused ? AppColors.pausedOrange : AppColors.inactiveGray)
                 }
             }
 
@@ -328,7 +328,7 @@ struct ModernTimerCard: View {
                 iconButton(
                     id: "pauseResume",
                     icon: timer.isActive ? "pause.fill" : "play.fill",
-                    color: timer.isActive ? Color(hex: "FF9500") : Color(hex: "34C759"),
+                    color: timer.isActive ? AppColors.pausedOrange : AppColors.activeGreen,
                     action: timer.isActive ? onPauseResume : onStart
                 )
 
@@ -336,7 +336,7 @@ struct ModernTimerCard: View {
                 iconButton(
                     id: "test",
                     icon: "bell.fill",
-                    color: Color(hex: "34C759"),
+                    color: AppColors.activeGreen,
                     action: onTestReminder
                 )
 
@@ -344,7 +344,7 @@ struct ModernTimerCard: View {
                 iconButton(
                     id: "edit",
                     icon: "pencil",
-                    color: Color(hex: "0A84FF"),
+                    color: AppColors.accentBlue,
                     action: onEdit
                 )
 
@@ -352,7 +352,7 @@ struct ModernTimerCard: View {
                 iconButton(
                     id: "delete",
                     icon: "trash",
-                    color: Color(hex: "FF3B30"),
+                    color: AppColors.errorLight,
                     action: onDelete
                 )
             }
@@ -451,19 +451,19 @@ struct ModernTimerCard: View {
 
     private var statusColor: Color {
         if timer.isActive {
-            return Color(hex: "34C759")
+            return AppColors.activeGreen
         } else if timer.isPaused {
-            return Color(hex: "FF9500")
+            return AppColors.pausedOrange
         }
-        return Color(hex: "8E8E93")
+        return AppColors.inactiveGray
     }
 
     private var statusBackgroundColor: Color {
         if timer.isActive {
-            return Color(hex: "34C759").opacity(0.12)
+            return AppColors.activeGreen.opacity(0.12)
         } else if timer.isPaused {
-            return Color(hex: "FF9500").opacity(0.12)
+            return AppColors.pausedOrange.opacity(0.12)
         }
-        return Color(hex: "8E8E93").opacity(0.1)
+        return AppColors.inactiveGray.opacity(0.1)
     }
 }
